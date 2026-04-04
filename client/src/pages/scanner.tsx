@@ -466,29 +466,77 @@ export default function Scanner() {
   // ── Camera init ──────────────────────────────────────────────────────────────
   useEffect(() => {
     async function startCamera() {
-      const tries = [
-        { video: { facingMode: { exact: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
-        { video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } },
-        { video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
-      ];
-      for (const c of tries) {
+      try {
+        // 1. Initial request to ensure camera permission is fully granted
+        // so we can read distinct hardware labels instead of generic ones.
+        let stream: MediaStream;
         try {
-          const stream = await navigator.mediaDevices.getUserMedia(c);
-          streamRef.current = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            await videoRef.current.play();
-            setCameraReady(true);
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        } catch {
+          // If device doesn't have an environment camera (e.g., standard PC), fallback generic
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+        
+        // 2. Enumerate available distinct hardware cameras
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter(d => d.kind === "videoinput");
+        
+        let bestDevice = null;
+        const backCameras = videoInputs.filter(d => d.label.toLowerCase().includes("back"));
+        
+        if (backCameras.length > 0) {
+          // Exclude virtual/switchable multi-cameras ("Dual", "Triple") which cause the toggling jump
+          // Also explicitly exclude the lower-quality "Ultra Wide" and "Telephoto" to just use the primary wide lens.
+          const standardLens = backCameras.find(d => 
+            !d.label.toLowerCase().includes("ultra") &&
+            !d.label.toLowerCase().includes("telephoto") &&
+            !d.label.toLowerCase().includes("dual") &&
+            !d.label.toLowerCase().includes("triple")
+          );
+          bestDevice = standardLens || backCameras[0];
+        } else if (videoInputs.length > 0) {
+          bestDevice = videoInputs[0];
+        }
+
+        // 3. Restart stream forcefully locked to our specific, stable hardware choice
+        const constraints = bestDevice ? {
+          video: {
+            deviceId: { exact: bestDevice.deviceId },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
           }
-          return;
-        } catch (e: any) {
-          if (e.name === "NotAllowedError") {
-            setCameraError("Camera access denied. Allow camera access and reload.");
-            return;
+        } : {
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
           }
+        };
+
+        // Shut down the temp stream
+        stream.getTracks().forEach(t => t.stop());
+        
+        // Open the high-res, specific camera stream
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch {
+          // If high-res constraints fail for some hardware reason, fallback safely
+          stream = await navigator.mediaDevices.getUserMedia({ video: bestDevice ? { deviceId: { exact: bestDevice.deviceId } } : true });
+        }
+
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+          setCameraReady(true);
+        }
+      } catch (e: any) {
+        if (e.name === "NotAllowedError") {
+          setCameraError("Camera access denied. Please allow camera permissions in your browser settings and try reopening the app.");
+        } else {
+          setCameraError("Unable to access camera securely. " + (e.message || ""));
         }
       }
-      setCameraError("No camera available on this device.");
     }
     startCamera();
     return () => { streamRef.current?.getTracks().forEach(t => t.stop()); };
