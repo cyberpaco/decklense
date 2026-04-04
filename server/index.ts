@@ -61,6 +61,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  const { ensureTables } = await import("./db");
+  await ensureTables();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
