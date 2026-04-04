@@ -6,8 +6,9 @@ import {
   Minus, Plus, Trash2, ArrowLeft, Layers, CreditCard,
   Edit2, Check, X, Scan, TrendingUp, DollarSign,
   BarChart2, Swords, Landmark, Info, Download, ChevronDown,
-  ArrowUpDown,
+  ArrowUpDown, Upload, Loader2,
 } from "lucide-react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -176,9 +177,10 @@ type ExportFmt = "arena" | "moxfield" | "csv";
 
 function exportDeck(cards: DeckCard[], deckName: string, fmt: ExportFmt) {
   let content = "";
-  if (fmt === "arena" || fmt === "moxfield") {
-    // Standard "N CardName" text — Arena & MTGO/Moxfield accept this
+  if (fmt === "arena") {
     content = cards.map(c => `${c.quantity} ${c.cardName ?? "Unknown"}`).join("\n");
+  } else if (fmt === "moxfield") {
+    content = cards.map(c => `${c.quantity} ${c.cardName ?? "Unknown"} (${(c.setCode ?? "").toUpperCase()}) ${c.collectorNumber ?? ""}`).join("\n");
   } else if (fmt === "csv") {
     const header = "Quantity,Name,Set,Collector Number,CMC,Type,Rarity,Price (USD)";
     const rows = cards.map(c =>
@@ -804,6 +806,155 @@ function ExportSheet({ cards, deckName, onClose }: {
   );
 }
 
+// ── Import Sheet ──────────────────────────────────────────────────────────────
+
+async function importCards(fileContent: string, deckId: string, setProgressMsg: (msg: string) => void) {
+  const isCsv = fileContent.startsWith("Quantity,Name");
+  const lines = fileContent.split(/\r?\n/).filter(l => l.trim().length > 0);
+  
+  if (isCsv) lines.shift(); // skip header
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    setProgressMsg(`Importing card ${i + 1} / ${lines.length}...`);
+    let qty = 1;
+    let name = "";
+    let set = "";
+    let num = "";
+    
+    if (isCsv) {
+      const parts = [];
+      let cur = "";
+      let inQuote = false;
+      for (const char of line) {
+        if (char === '"') inQuote = !inQuote;
+        else if (char === ',' && !inQuote) { parts.push(cur); cur = ""; }
+        else cur += char;
+      }
+      parts.push(cur);
+      
+      qty = parseInt(parts[0], 10) || 1;
+      name = parts[1] ? parts[1].replace(/^"|"$/g, "") : "";
+      set = parts[2] ? parts[2].replace(/^"|"$/g, "") : "";
+      num = parts[3] ? parts[3].replace(/^"|"$/g, "") : "";
+    } else {
+      const match = line.match(/^(\d+)\s+(.+?)(?:\s+\(([A-Za-z0-9]+)\)\s+(\S+))?$/);
+      if (match) {
+        qty = parseInt(match[1], 10) || 1;
+        name = match[2].trim();
+        if (match[3]) set = match[3];
+        if (match[4]) num = match[4];
+      } else {
+        const fallback = line.match(/^(\d+)\s+(.+)$/);
+        if (fallback) {
+          qty = parseInt(fallback[1], 10) || 1;
+          name = fallback[2].trim();
+        } else {
+          name = line.trim();
+        }
+      }
+    }
+    
+    let scryfallData: any = null;
+    if (name && (!set || !num)) {
+       try {
+         const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`);
+         if (res.ok) scryfallData = await res.json();
+       } catch {}
+       if (scryfallData && scryfallData.object !== "error") {
+         set = scryfallData.set;
+         num = scryfallData.collector_number;
+       }
+    } else if (name && set && num) {
+       try {
+         const res = await fetch(`https://api.scryfall.com/cards/${set.toLowerCase()}/${num.toLowerCase()}`);
+         if (res.ok) scryfallData = await res.json();
+       } catch {}
+    }
+    
+    if (!set) set = "UNK";
+    if (!num) num = "0";
+    
+    if (scryfallData && scryfallData.object !== "error") {
+       const mapped = {
+         setCode: set, collectorNumber: num, name: scryfallData.name,
+         typeLine: scryfallData.type_line, manaCost: scryfallData.mana_cost,
+         cmc: scryfallData.cmc, rarity: scryfallData.rarity,
+         imageUri: scryfallData.image_uris?.normal ?? scryfallData.card_faces?.[0]?.image_uris?.normal,
+         scryfallId: scryfallData.id, colors: scryfallData.colors ?? scryfallData.card_faces?.[0]?.colors,
+         priceUsd: scryfallData.prices?.usd, 
+       };
+       await apiRequest("POST", `/api/decks/${deckId}/cards`, { ...mapped, quantity: qty, cardName: mapped.name });
+    } else {
+       await apiRequest("POST", `/api/decks/${deckId}/cards`, {
+         setCode: set, collectorNumber: num, cardName: name, quantity: qty
+       });
+    }
+  }
+}
+
+function ImportSheet({ deckId, onClose, onComplete }: { deckId: string; onClose: () => void; onComplete: () => void }) {
+  const [progressMsg, setProgressMsg] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
+    setProgressMsg("Reading file...");
+    try {
+      const text = await file.text();
+      await importCards(text, deckId, setProgressMsg);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsImporting(false);
+      onComplete();
+      onClose();
+    }
+  };
+
+  return (
+    <motion.div className="fixed inset-0 z-50 flex flex-col justify-end"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !isImporting && onClose()} />
+      <motion.div className="relative bg-background rounded-t-2xl shadow-2xl"
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 28, stiffness: 300 }}
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border/40">
+          <div>
+            <h2 className="font-semibold text-foreground">Import Deck</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Upload a CSV or TXT file</p>
+          </div>
+          {!isImporting && <Button size="icon" variant="ghost" onClick={onClose}><X className="w-4 h-4" /></Button>}
+        </div>
+        <div className="px-4 py-6 space-y-4 flex flex-col items-center">
+          {isImporting ? (
+            <div className="flex flex-col items-center justify-center p-4">
+              <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
+              <p className="text-sm font-medium">{progressMsg}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">This might take a moment.</p>
+            </div>
+          ) : (
+            <>
+              <input type="file" accept=".txt,.csv" className="hidden" ref={fileInputRef} onChange={handleFile} />
+              <Button onClick={() => fileInputRef.current?.click()} className="w-full max-w-sm h-12 rounded-xl" data-testid="button-select-import-file">
+                <Upload className="w-4 h-4 mr-2" />
+                Select File
+              </Button>
+              <p className="text-[11px] text-muted-foreground text-center max-w-[250px]">
+                Supports Arena/MTGO plain text or standard CSV format exported previously.
+              </p>
+            </>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── Sort controls ─────────────────────────────────────────────────────────────
 
 const SORT_OPTIONS: { id: SortBy; label: string }[] = [
@@ -920,6 +1071,7 @@ export default function DeckDetail() {
   const [nameValue, setNameValue]     = useState("");
   const [sortBy, setSortBy]           = useState<SortBy>("name");
   const [showExport, setShowExport]   = useState(false);
+  const [showImport, setShowImport]   = useState(false);
 
   const { data: deck, isLoading: deckLoading } = useQuery<Deck>({
     queryKey: ["/api/decks", id],
@@ -1032,6 +1184,13 @@ export default function DeckDetail() {
             )}
 
             <div className="flex items-center gap-2 flex-shrink-0">
+              <Button size="sm" variant="outline"
+                onClick={() => setShowImport(true)}
+                data-testid="button-import-deck"
+                className="gap-1.5">
+                <Upload className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Import</span>
+              </Button>
               {cards && cards.length > 0 && (
                 <Button size="sm" variant="outline"
                   onClick={() => setShowExport(true)}
@@ -1130,6 +1289,17 @@ export default function DeckDetail() {
       <AnimatePresence>
         {showExport && cards && deck && (
           <ExportSheet cards={cards} deckName={deck.name} onClose={() => setShowExport(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* Import sheet */}
+      <AnimatePresence>
+        {showImport && (
+          <ImportSheet deckId={id} onClose={() => setShowImport(false)} onComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/decks", id, "cards"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+            toast({ description: "Import completed successfully." });
+          }} />
         )}
       </AnimatePresence>
     </div>
