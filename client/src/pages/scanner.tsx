@@ -511,11 +511,11 @@ function CardDrawer({ initial, deck, onAdd, onClose }: {
                 )}
 
                 <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1 h-11" onClick={onClose}
+                  <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={onClose}
                     disabled={isAdding} data-testid="button-skip-card">
                     <X className="w-4 h-4 mr-1.5" />Skip
                   </Button>
-                  <Button className="flex-1 h-11" onClick={async () => {
+                  <Button className="flex-1 h-12 rounded-xl" onClick={async () => {
                     setIsAdding(true); try { await onAdd(card); } finally { setIsAdding(false); }
                   }} disabled={isAdding || !deck} data-testid="button-confirm-add">
                     {isAdding ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Check className="w-4 h-4 mr-1.5" />}
@@ -526,7 +526,7 @@ function CardDrawer({ initial, deck, onAdd, onClose }: {
             )}
 
             {state !== "found" && (
-              <Button variant="ghost" className="w-full mt-3 text-muted-foreground text-xs h-9"
+              <Button variant="outline" className="w-full mt-3 h-12 rounded-xl text-foreground"
                 onClick={onClose} data-testid="button-dismiss-drawer">Cancel</Button>
             )}
           </div>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1111,6 +1111,14 @@ function ComboDrawer({
   isPending: boolean;
 }) {
   const [name, setName] = useState("");
+  
+  useEffect(() => {
+    // Freeze background scrolling
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = originalStyle; };
+  }, []);
+
   return (
     <motion.div className="fixed inset-0 z-[70] flex flex-col justify-end pointer-events-none"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -1120,9 +1128,15 @@ function ComboDrawer({
       <motion.div className="relative bg-background/97 backdrop-blur-2xl rounded-t-3xl shadow-2xl border-t border-border/50 pointer-events-auto"
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 320 }}
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}>
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.5 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.y > 80 || info.velocity.y > 400) onClose();
+        }}>
         
-        <div className="w-full flex items-center justify-center py-4">
+        <div className="w-full flex items-center justify-center py-4 cursor-grab active:cursor-grabbing">
           <div className="w-10 h-1.5 bg-muted-foreground/30 rounded-full" />
         </div>
 
@@ -1174,6 +1188,13 @@ function DeletedCardsDrawer({
   onRestore: (card: DeckCard) => void;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    // Freeze background scrolling
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = originalStyle; };
+  }, []);
+
   return (
     <motion.div className="fixed inset-0 z-[70] flex flex-col justify-end pointer-events-none"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -1182,9 +1203,15 @@ function DeletedCardsDrawer({
       <motion.div className="relative bg-background/97 backdrop-blur-2xl rounded-t-3xl shadow-2xl border-t border-border/50 pointer-events-auto flex flex-col max-h-[85vh]"
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 320 }}
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}>
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.5 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.y > 80 || info.velocity.y > 400) onClose();
+        }}>
         
-        <div className="w-full flex items-center justify-center py-4 flex-shrink-0">
+        <div className="w-full flex items-center justify-center py-4 flex-shrink-0 cursor-grab active:cursor-grabbing">
           <div className="w-10 h-1.5 bg-muted-foreground/30 rounded-full" />
         </div>
 
