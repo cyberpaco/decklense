@@ -1193,72 +1193,6 @@ function ComboDrawer({
   );
 }
 
-// ── Search Drawer ──────────────────────────────────────────────────────────────
-function SearchDrawer({
-  query,
-  onQuery,
-  onClose
-}: {
-  query: string;
-  onQuery: (q: string) => void;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    // Freeze background scrolling
-    const originalStyle = window.getComputedStyle(document.body).overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = originalStyle; };
-  }, []);
-
-  return (
-    <motion.div className="fixed inset-0 z-[70] flex flex-col justify-end pointer-events-none"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
-      
-      <motion.div className="relative bg-background/97 backdrop-blur-2xl rounded-t-3xl shadow-2xl border-t border-border/50 pointer-events-auto flex flex-col max-h-[85vh]"
-        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-        transition={{ type: "spring", damping: 28, stiffness: 320 }}
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0, bottom: 0.5 }}
-        onDragEnd={(_, info) => {
-          if (info.offset.y > 80 || info.velocity.y > 400) onClose();
-        }}>
-        
-        <div className="w-full flex items-center justify-center py-4 flex-shrink-0 cursor-grab active:cursor-grabbing">
-          <div className="w-10 h-1.5 bg-muted-foreground/30 rounded-full" />
-        </div>
-
-        <div className="px-5 pb-2 flex-shrink-0 mb-4">
-          <h3 className="text-lg font-bold text-foreground">Search Cards</h3>
-          <p className="text-sm text-muted-foreground">Filter your set by name or stats</p>
-        </div>
-
-        <div className="px-5 space-y-4 pb-4 flex-1 overflow-y-auto">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              autoFocus
-              placeholder="e.g. Lotus, Artifact..."
-              value={query}
-              onChange={e => onQuery(e.target.value)}
-              className="pl-9 h-12 bg-muted/40 border-none rounded-xl text-base w-full"
-              onKeyDown={e => { if (e.key === "Enter") onClose(); }}
-            />
-          </div>
-        </div>
-        
-        <div className="px-5 pt-2 flex-shrink-0">
-          <Button variant="outline" className="w-full h-12 rounded-xl" onClick={onClose}>
-            Done
-          </Button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
 // ── Group label for sorted views ──────────────────────────────────────────────
 
 function getGroupLabel(card: DeckCard, by: SortBy): string {
@@ -1300,6 +1234,12 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [viewDeleted, setViewDeleted] = useState(false);
+
+  useEffect(() => {
+    if (markingCombo && comboCards.length === 0) {
+      setMarkingCombo(false);
+    }
+  }, [markingCombo, comboCards.length]);
 
   // Shared deck fetch
   const { data: sharedData, isLoading: sharedLoading } = useQuery<{ deck: Deck; cards: DeckCard[]; cardCount: number }>({
@@ -1594,20 +1534,52 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
             </div>
           ) : (
             <>
-              {/* Search, Sort, and Recycle Bin */}
               <div className="mb-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <SortBar sortBy={sortBy} onChange={setSortBy} />
-                    
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl"
-                      onClick={() => setShowSearch(true)}
-                      data-testid="button-toggle-search">
-                      <Search className="w-4 h-4 text-muted-foreground" />
-                    </Button>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <AnimatePresence mode="wait">
+                      {showSearch ? (
+                        <motion.div 
+                          key="search-bar"
+                          initial={{ width: 0, opacity: 0 }} 
+                          animate={{ width: "100%", opacity: 1 }} 
+                          exit={{ width: 0, opacity: 0 }}
+                          className="flex items-center gap-2 flex-1"
+                        >
+                          <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                            <Input
+                              autoFocus
+                              placeholder="Search card name..."
+                              value={searchQuery}
+                              onChange={e => setSearchQuery(e.target.value)}
+                              className="pl-9 h-10 w-full bg-muted/40 border-none rounded-xl"
+                            />
+                          </div>
+                          <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0" onClick={() => { setShowSearch(false); setSearchQuery(""); }}>
+                            <X className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        </motion.div>
+                      ) : (
+                        <motion.div 
+                          key="sort-bar"
+                          initial={{ opacity: 0 }} 
+                          animate={{ opacity: 1 }} 
+                          exit={{ opacity: 0 }}
+                          className="flex items-center gap-2"
+                        >
+                          <SortBar sortBy={sortBy} onChange={setSortBy} />
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl"
+                            onClick={() => setShowSearch(true)}
+                            data-testid="button-toggle-search">
+                            <Search className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {!isShared && (
@@ -1745,10 +1717,10 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               className="max-w-sm w-full mx-4"
               onClick={e => e.stopPropagation()}>
-              {fullscreenCard.imageUri ? (
+              {fullscreenCard!.imageUri ? (
                 <img
-                  src={fullscreenCard.imageUri}
-                  alt={fullscreenCard.cardName ?? "Card"}
+                  src={fullscreenCard!.imageUri}
+                  alt={fullscreenCard!.cardName ?? "Card"}
                   className="w-full rounded-2xl shadow-2xl"
                   onDoubleClick={() => setFullscreenCard(null)}
                 />
@@ -1759,10 +1731,10 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
                 </div>
               )}
               <div className="mt-3 text-center">
-                <p className="text-white font-semibold text-lg">{fullscreenCard.cardName ?? "Unknown"}</p>
+                <p className="text-white font-semibold text-lg">{fullscreenCard!.cardName ?? "Unknown"}</p>
                 <p className="text-white/60 text-xs mt-1">
-                  {fullscreenCard.setCode?.toUpperCase()} #{fullscreenCard.collectorNumber}
-                  {fullscreenCard.priceUsd && <span className="ml-2 text-green-400">${parseFloat(fullscreenCard.priceUsd).toFixed(2)}</span>}
+                  {fullscreenCard!.setCode?.toUpperCase()} #{fullscreenCard!.collectorNumber}
+                  {fullscreenCard!.priceUsd && <span className="ml-2 text-green-400">${parseFloat(fullscreenCard!.priceUsd).toFixed(2)}</span>}
                 </p>
                 <p className="text-white/40 text-[11px] mt-3">Tap or double-tap to close</p>
               </div>
@@ -1779,12 +1751,6 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
             onSave={name => updateCombo.mutate({ combo: name, cardIds: comboCards })}
             isPending={updateCombo.isPending}
           />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showSearch && (
-          <SearchDrawer query={searchQuery} onQuery={setSearchQuery} onClose={() => setShowSearch(false)} />
         )}
       </AnimatePresence>
     </div>
