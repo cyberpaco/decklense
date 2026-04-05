@@ -9,7 +9,6 @@ import NotFound from "@/pages/not-found";
 import Scanner from "@/pages/scanner";
 import Decks from "@/pages/home";
 import DeckDetail from "@/pages/deck";
-import SharedDeckView from "@/pages/shared-deck";
 import LoginPage from "@/pages/login";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -59,7 +58,7 @@ function Router() {
   return (
     <Switch>
       {/* Public route — accessible without login */}
-      <Route path="/shared/:token" component={SharedDeckView} />
+      <Route path="/shared/:token">{() => <DeckDetail isShared />}</Route>
       {/* Auth-guarded routes */}
       {isLoading ? (
         <Route><LoadingScreen /></Route>
@@ -69,7 +68,7 @@ function Router() {
         <>
           <Route path="/" component={Scanner} />
           <Route path="/decks" component={Decks} />
-          <Route path="/deck/:id" component={DeckDetail} />
+          <Route path="/deck/:id">{() => <DeckDetail />}</Route>
           <Route component={NotFound} />
         </>
       )}

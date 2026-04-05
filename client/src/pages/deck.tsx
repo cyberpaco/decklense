@@ -980,7 +980,7 @@ function SortBar({ sortBy, onChange }: { sortBy: SortBy; onChange: (s: SortBy) =
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2 shrink-0">
+        <Button variant="outline" size="sm" className="gap-2 shrink-0 h-10 rounded-xl">
           <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
           <span>Sort by: {selectedLabel}</span>
           <ChevronDown className="w-3 h-3 text-muted-foreground ml-1" />
@@ -1004,10 +1004,10 @@ function SortBar({ sortBy, onChange }: { sortBy: SortBy; onChange: (s: SortBy) =
 
 // ── Card Tile ─────────────────────────────────────────────────────────────────
 
-function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSelected, onComboToggle, onComboStart, onFullscreen }: {
+function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSelected, onComboToggle, onComboStart, onFullscreen, isShared }: {
   card: DeckCard; onIncrease: () => void; onDecrease: () => void; onDelete: () => void;
   isComboMode?: boolean; comboSelected?: boolean; onComboToggle?: () => void; onComboStart?: () => void;
-  onFullscreen?: () => void;
+  onFullscreen?: () => void; isShared?: boolean;
 }) {
   const [imgErr, setImgErr] = useState(false);
   const price = card.priceUsd ? `$${parseFloat(card.priceUsd).toFixed(2)}` : null;
@@ -1016,7 +1016,7 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
   const didLongPress = useRef(false);
 
   const handlePointerDown = useCallback(() => {
-    if (isComboMode) return;
+    if (isComboMode || isShared) return;
     didLongPress.current = false;
     longPressTimer.current = setTimeout(() => {
       didLongPress.current = true;
@@ -1071,7 +1071,7 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
             {card.quantity}
           </div>
         )}
-        {!isComboMode && (
+        {!isComboMode && !isShared && (
           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-1 pb-2">
             <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={e => { e.stopPropagation(); onDecrease(); }}
               data-testid={`button-decrease-${card.id}`}><Minus className="w-3 h-3" /></Button>
@@ -1286,8 +1286,9 @@ function getGroupLabel(card: DeckCard, by: SortBy): string {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function DeckDetail() {
-  const { id } = useParams<{ id: string }>();
+export default function DeckDetail({ isShared = false }: { isShared?: boolean }) {
+  const { id, token } = useParams<{ id?: string, token?: string }>();
+  const activeId = isShared ? token : id;
   const { toast } = useToast();
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue]     = useState("");
@@ -1303,16 +1304,28 @@ export default function DeckDetail() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
-  const { data: deck, isLoading: deckLoading } = useQuery<Deck>({
+  // Shared deck fetch
+  const { data: sharedData, isLoading: sharedLoading } = useQuery<{ deck: Deck; cards: DeckCard[]; cardCount: number }>({
+    queryKey: ["/api/shared", token],
+    queryFn: async () => {
+      const r = await fetch(`/api/shared/${token}`);
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+    enabled: isShared && !!token,
+  });
+
+  // Regular deck fetch
+  const { data: deckData, isLoading: deckLoading } = useQuery<Deck>({
     queryKey: ["/api/decks", id],
     queryFn: async () => {
       const r = await fetch(`/api/decks/${id}`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
-    enabled: !!id,
+    enabled: !isShared && !!id,
   });
-  const { data: cards, isLoading: cardsLoading } = useQuery<DeckCard[]>({
+  const { data: cardsData, isLoading: cardsLoading } = useQuery<DeckCard[]>({
     queryKey: ["/api/decks", id, "cards"],
     queryFn: async () => {
       const r = await fetch(`/api/decks/${id}/cards`, { credentials: "include" });
@@ -1320,8 +1333,12 @@ export default function DeckDetail() {
       const data = await r.json();
       return Array.isArray(data) ? data : [];
     },
-    enabled: !!id,
+    enabled: !isShared && !!id,
   });
+
+  const deck = isShared ? sharedData?.deck : deckData;
+  const cards = isShared ? sharedData?.cards : cardsData;
+  const isLoading = isShared ? sharedLoading : (deckLoading || cardsLoading);
 
   const analytics  = useAnalytics(cards);
   const totalCards = cards?.reduce((s, c) => s + c.quantity, 0) ?? 0;
@@ -1431,7 +1448,7 @@ export default function DeckDetail() {
     deleteCard.mutate(card.id);
   }, [deleteCard]);
 
-  if (!id) return null;
+  if (!activeId) return null;
 
   // Build grouped card list (only show group headers for type/subtype/color/cmc sorts)
   const useGroups = ["type","subtype","color","cmc","combo"].includes(sortBy);
@@ -1457,14 +1474,14 @@ export default function DeckDetail() {
       <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-xl border-b border-border/50">
         <div className="max-w-5xl mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
-            <Link href="/decks">
+            <Link href={isShared ? "/" : "/decks"}>
               <button className="w-9 h-9 rounded-full bg-muted flex items-center justify-center hover-elevate flex-shrink-0"
                 data-testid="button-back-to-decks">
                 <ArrowLeft className="w-4 h-4" />
               </button>
             </Link>
 
-            {editingName ? (
+            {editingName && !isShared ? (
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <Input value={nameValue} onChange={e => setNameValue(e.target.value)}
                   onKeyDown={e => {
@@ -1481,55 +1498,60 @@ export default function DeckDetail() {
               </div>
             ) : (
               <div className="flex-1 min-w-0">
-                {deckLoading ? <Skeleton className="h-6 w-40" /> : (
+                {isLoading ? <Skeleton className="h-6 w-40" /> : (
                   <div className="flex items-center gap-2 group/name">
                     <h1 className="font-semibold text-xl text-foreground tracking-tight truncate"
                       data-testid="text-deck-name">{deck?.name}</h1>
-                    <Button size="icon" variant="ghost"
-                      className="h-7 w-7 opacity-0 group-hover/name:opacity-100 transition-opacity flex-shrink-0"
-                      onClick={() => { setNameValue(deck?.name ?? ""); setEditingName(true); }}>
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </Button>
+                    {!isShared && (
+                      <Button size="icon" variant="ghost"
+                        className="h-7 w-7 opacity-0 group-hover/name:opacity-100 transition-opacity flex-shrink-0"
+                        onClick={() => { setNameValue(deck?.name ?? ""); setEditingName(true); }}>
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground mt-0.5" data-testid="text-card-count">
                   {totalCards} card{totalCards !== 1 ? "s" : ""}
+                  {isShared && <span className="ml-2">· Shared deck (read-only)</span>}
                 </p>
               </div>
             )}
 
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <Button size="sm" variant="outline"
-                onClick={() => setShowImport(true)}
-                data-testid="button-import-deck"
-                className="gap-1.5">
-                <Upload className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Import</span>
-              </Button>
-              {cards && cards.length > 0 && (
+            {!isShared && (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 <Button size="sm" variant="outline"
-                  onClick={() => setShowExport(true)}
-                  data-testid="button-export-deck"
+                  onClick={() => setShowImport(true)}
+                  data-testid="button-import-deck"
                   className="gap-1.5">
-                  <Download className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Export</span>
+                  <Upload className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Import</span>
                 </Button>
-              )}
-              {cards && cards.length > 0 && (
-                <Button size="sm" variant="outline"
-                  onClick={handleShare}
-                  data-testid="button-share-deck"
-                  className="gap-1.5">
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Share</span>
-                </Button>
-              )}
-              <Link href="/">
-                <Button size="sm" data-testid="button-scan-more">
-                  <Scan className="w-4 h-4 mr-1.5" />Scan
-                </Button>
-              </Link>
-            </div>
+                {cards && cards.length > 0 && (
+                  <Button size="sm" variant="outline"
+                    onClick={() => setShowExport(true)}
+                    data-testid="button-export-deck"
+                    className="gap-1.5">
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Export</span>
+                  </Button>
+                )}
+                {cards && cards.length > 0 && (
+                  <Button size="sm" variant="outline"
+                    onClick={handleShare}
+                    data-testid="button-share-deck"
+                    className="gap-1.5">
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Share</span>
+                  </Button>
+                )}
+                <Link href="/">
+                  <Button size="sm" data-testid="button-scan-more">
+                    <Scan className="w-4 h-4 mr-1.5" />Scan
+                  </Button>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1544,7 +1566,7 @@ export default function DeckDetail() {
 
         {/* Card grid */}
         <div className="mt-4">
-          {cardsLoading ? (
+          {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="aspect-[5/7] rounded-xl" />)}
             </div>
@@ -1554,10 +1576,18 @@ export default function DeckDetail() {
                 <Layers className="w-8 h-8 text-muted-foreground/40" />
               </div>
               <h2 className="font-semibold text-foreground mb-1">Deck is empty</h2>
-              <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-                Hold up a card and tap the shutter button to scan it in.
-              </p>
-              <Link href="/"><Button data-testid="button-go-scan"><Scan className="w-4 h-4 mr-1.5" />Start Scanning</Button></Link>
+              {!isShared ? (
+                <>
+                  <p className="text-sm text-muted-foreground mb-6 max-w-xs">
+                    Hold up a card and tap the shutter button to scan it in.
+                  </p>
+                  <Link href="/"><Button data-testid="button-go-scan"><Scan className="w-4 h-4 mr-1.5" />Start Scanning</Button></Link>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground mb-6 max-w-xs">
+                  This shared deck doesn't have any cards yet.
+                </p>
+              )}
             </div>
           ) : (
             <>
@@ -1627,6 +1657,7 @@ export default function DeckDetail() {
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                         {group.cards.map(card => (
                           <CardTile key={card.id} card={card}
+                            isShared={isShared}
                             isComboMode={markingCombo}
                             comboSelected={comboCards.includes(card.id)}
                             onComboStart={() => {
@@ -1651,6 +1682,7 @@ export default function DeckDetail() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                   {sortedCards.map(card => (
                     <CardTile key={card.id} card={card}
+                      isShared={isShared}
                       isComboMode={markingCombo}
                       comboSelected={comboCards.includes(card.id)}
                       onComboStart={() => {
@@ -1684,7 +1716,7 @@ export default function DeckDetail() {
       {/* Import sheet */}
       <AnimatePresence>
         {showImport && (
-          <ImportSheet deckId={id} onClose={() => setShowImport(false)} onComplete={() => {
+          <ImportSheet deckId={id!} onClose={() => setShowImport(false)} onComplete={() => {
             queryClient.invalidateQueries({ queryKey: ["/api/decks", id, "cards"] });
             queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
             toast({ description: "Import completed successfully." });
