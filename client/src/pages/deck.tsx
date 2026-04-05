@@ -15,6 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { Deck, DeckCard } from "@shared/schema";
 
 // ── Color constants ───────────────────────────────────────────────────────────
@@ -139,7 +141,7 @@ function landDropProb(deckSize: number, landCount: number, turn: number): number
 
 // ── Sorting ───────────────────────────────────────────────────────────────────
 
-type SortBy = "name" | "cmc" | "type" | "subtype" | "color" | "price";
+type SortBy = "name" | "cmc" | "type" | "subtype" | "color" | "price" | "combo";
 
 function sortCards(cards: DeckCard[], by: SortBy): DeckCard[] {
   const a = [...cards];
@@ -168,6 +170,13 @@ function sortCards(cards: DeckCard[], by: SortBy): DeckCard[] {
     case "price":
       return a.sort((x, y) =>
         (parseFloat(y.priceUsd ?? "0") || 0) - (parseFloat(x.priceUsd ?? "0") || 0));
+    case "combo":
+      return a.sort((x, y) => {
+        if (!x.combo && !y.combo) return (x.cardName ?? "").localeCompare(y.cardName ?? "");
+        if (!x.combo) return 1;
+        if (!y.combo) return -1;
+        return x.combo.localeCompare(y.combo) || (x.cardName ?? "").localeCompare(y.cardName ?? "");
+      });
   }
 }
 
@@ -964,41 +973,52 @@ const SORT_OPTIONS: { id: SortBy; label: string }[] = [
   { id: "subtype", label: "Creature Type" },
   { id: "color",   label: "Color" },
   { id: "price",   label: "Price" },
+  { id: "combo",   label: "Combo" },
 ];
 
 function SortBar({ sortBy, onChange }: { sortBy: SortBy; onChange: (s: SortBy) => void }) {
+  const selectedLabel = SORT_OPTIONS.find(o => o.id === sortBy)?.label ?? "Sort";
   return (
-    <div className="flex items-center gap-2">
-      <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-      <div className="flex gap-1.5 overflow-x-auto pb-1 flex-1">
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2 shrink-0">
+          <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
+          <span>Sort by: {selectedLabel}</span>
+          <ChevronDown className="w-3 h-3 text-muted-foreground ml-1" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
         {SORT_OPTIONS.map(opt => (
-          <button key={opt.id}
-            onClick={() => onChange(opt.id)}
-            className={`flex-shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-full transition-all ${
-              sortBy === opt.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid={`sort-${opt.id}`}>
-            {opt.label}
-          </button>
+          <DropdownMenuItem key={opt.id} onClick={() => onChange(opt.id)}>
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4 flex items-center justify-center">
+                {sortBy === opt.id && <Check className="w-3 h-3 text-primary" />}
+              </span>
+              <span>{opt.label}</span>
+            </div>
+          </DropdownMenuItem>
         ))}
-      </div>
-    </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 // ── Card Tile ─────────────────────────────────────────────────────────────────
 
-function CardTile({ card, onIncrease, onDecrease, onDelete }: {
+function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSelected, onComboToggle, onComboStart }: {
   card: DeckCard; onIncrease: () => void; onDecrease: () => void; onDelete: () => void;
+  isComboMode?: boolean; comboSelected?: boolean; onComboToggle?: () => void; onComboStart?: () => void;
 }) {
   const [imgErr, setImgErr] = useState(false);
   const price = card.priceUsd ? `$${parseFloat(card.priceUsd).toFixed(2)}` : null;
   const colors = (card.colors ?? []).filter(c => WUBRG.includes(c));
 
   return (
-    <div className={`group relative bg-card border border-border rounded-xl overflow-visible hover-elevate ${RARITY_RING[card.rarity ?? ""] ?? ""}`}
+    <motion.div
+      {...(isComboMode && comboSelected ? { animate: { rotate: [-1.5, 1.5, -1.5, 1.5, -1.5] }, transition: { repeat: Infinity, duration: 0.3 } } : {})}
+      onDoubleClick={() => { if (!isComboMode && onComboStart) onComboStart(); }}
+      onClick={() => { if (isComboMode && onComboToggle) onComboToggle(); }}
+      className={`group relative bg-card border rounded-xl overflow-visible hover-elevate ${RARITY_RING[card.rarity ?? ""] ?? "border-border"} ${isComboMode && comboSelected ? "ring-4 ring-primary" : ""}`}
       data-testid={`card-item-${card.id}`}>
       <div className="relative aspect-[5/7] rounded-t-xl overflow-hidden bg-muted">
         {card.imageUri && !imgErr ? (
@@ -1038,7 +1058,7 @@ function CardTile({ card, onIncrease, onDecrease, onDelete }: {
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -1047,6 +1067,7 @@ function CardTile({ card, onIncrease, onDecrease, onDelete }: {
 function getGroupLabel(card: DeckCard, by: SortBy): string {
   switch (by) {
     case "type":    return getCardType(card.typeLine);
+    case "combo":   return card.combo ? `Combo: ${card.combo}` : "No Combo";
     case "subtype": {
       const s = getCreatureSubtypes(card.typeLine);
       return s.length > 0 ? s.join(", ") : "Non-Creature";
@@ -1072,6 +1093,11 @@ export default function DeckDetail() {
   const [sortBy, setSortBy]           = useState<SortBy>("name");
   const [showExport, setShowExport]   = useState(false);
   const [showImport, setShowImport]   = useState(false);
+
+  const [markingCombo, setMarkingCombo] = useState<boolean>(false);
+  const [comboCards, setComboCards] = useState<string[]>([]);
+  const [comboNameModalOpen, setComboNameModalOpen] = useState<boolean>(false);
+  const [comboName, setComboName] = useState<string>("");
 
   const { data: deck, isLoading: deckLoading } = useQuery<Deck>({
     queryKey: ["/api/decks", id],
@@ -1113,10 +1139,24 @@ export default function DeckDetail() {
     },
   });
 
+  const updateCombo = useMutation({
+    mutationFn: async ({ combo, cardIds }: { combo: string; cardIds: string[] }) => {
+      await Promise.all(cardIds.map(cid => apiRequest("PATCH", `/api/decks/${id}/cards/${cid}`, { combo })));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/decks", id, "cards"] });
+      setMarkingCombo(false);
+      setComboCards([]);
+      setComboNameModalOpen(false);
+      setComboName("");
+      toast({ description: "Combo saved" });
+    }
+  });
+
   if (!id) return null;
 
   // Build grouped card list (only show group headers for type/subtype/color/cmc sorts)
-  const useGroups = ["type","subtype","color","cmc"].includes(sortBy);
+  const useGroups = ["type","subtype","color","cmc","combo"].includes(sortBy);
   const groups: { label: string; cards: DeckCard[] }[] = [];
   if (useGroups && sortedCards.length > 0) {
     let cur: DeckCard[] = [];
@@ -1256,6 +1296,15 @@ export default function DeckDetail() {
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                         {group.cards.map(card => (
                           <CardTile key={card.id} card={card}
+                            isComboMode={markingCombo}
+                            comboSelected={comboCards.includes(card.id)}
+                            onComboStart={() => {
+                              setMarkingCombo(true);
+                              setComboCards([card.id]);
+                            }}
+                            onComboToggle={() => {
+                              setComboCards(prev => prev.includes(card.id) ? prev.filter(x => x !== card.id) : [...prev, card.id]);
+                            }}
                             onIncrease={() => updateQty.mutate({ cardId: card.id, quantity: card.quantity + 1 })}
                             onDecrease={() => {
                               if (card.quantity <= 1) deleteCard.mutate(card.id);
@@ -1271,6 +1320,15 @@ export default function DeckDetail() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                   {sortedCards.map(card => (
                     <CardTile key={card.id} card={card}
+                      isComboMode={markingCombo}
+                      comboSelected={comboCards.includes(card.id)}
+                      onComboStart={() => {
+                        setMarkingCombo(true);
+                        setComboCards([card.id]);
+                      }}
+                      onComboToggle={() => {
+                        setComboCards(prev => prev.includes(card.id) ? prev.filter(x => x !== card.id) : [...prev, card.id]);
+                      }}
                       onIncrease={() => updateQty.mutate({ cardId: card.id, quantity: card.quantity + 1 })}
                       onDecrease={() => {
                         if (card.quantity <= 1) deleteCard.mutate(card.id);
@@ -1302,6 +1360,40 @@ export default function DeckDetail() {
           }} />
         )}
       </AnimatePresence>
+
+      {/* Combo Marking Banner */}
+      <AnimatePresence>
+        {markingCombo && (
+          <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur-md shadow-2xl border border-primary/20 px-5 py-3 rounded-full flex items-center gap-4">
+            <p className="text-sm font-semibold whitespace-nowrap">{comboCards.length} cards selected</p>
+            <Button size="sm" onClick={() => setComboNameModalOpen(true)} disabled={comboCards.length === 0}>
+              Save Combo
+            </Button>
+            <Button size="sm" variant="ghost" className="text-muted-foreground hover:bg-muted/50" onClick={() => { setMarkingCombo(false); setComboCards([]); }}>
+              Cancel
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <Dialog open={comboNameModalOpen} onOpenChange={setComboNameModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Name Combo</DialogTitle>
+            <DialogDescription>Enter a name for the selected combo.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Input autoFocus value={comboName} onChange={e => setComboName(e.target.value)} placeholder="e.g. Infinite Mana" />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setComboNameModalOpen(false)}>Cancel</Button>
+            <Button onClick={() => updateCombo.mutate({ combo: comboName, cardIds: comboCards })} disabled={!comboName.trim() || updateCombo.isPending}>
+              {updateCombo.isPending ? "Saving..." : "Save Combo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

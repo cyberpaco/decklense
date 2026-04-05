@@ -300,6 +300,14 @@ export async function registerRoutes(
     res.json(card);
   });
 
+  app.patch("/api/decks/:deckId/cards/:cardId", isAuthenticated, async (req: any, res) => {
+    const deck = await storage.getDeck(req.params.deckId, userId(req));
+    if (!deck) return res.status(404).json({ error: "Deck not found" });
+    const card = await storage.updateDeckCard(req.params.cardId, req.body);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    res.json(card);
+  });
+
   app.delete("/api/decks/:deckId/cards/:cardId", isAuthenticated, async (req: any, res) => {
     const deck = await storage.getDeck(req.params.deckId, userId(req));
     if (!deck) return res.status(404).json({ error: "Deck not found" });

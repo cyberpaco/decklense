@@ -25,6 +25,7 @@ export const deckCards = pgTable("deck_cards", {
   scryfallId: text("scryfall_id"),
   colors: text("colors").array(),
   priceUsd: text("price_usd"),
+  combo: text("combo"),
 });
 
 export const insertDeckSchema = createInsertSchema(decks).omit({ createdAt: true });
