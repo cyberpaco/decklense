@@ -243,7 +243,10 @@ export async function registerRoutes(
       id: randomUUID(),
       userId: userId(req),
     });
-    if (!result.success) return res.status(400).json({ error: result.error });
+    if (!result.success) {
+      console.error("Deck validation failed:", result.error.errors);
+      return res.status(400).json({ error: result.error });
+    }
     const deck = await storage.createDeck(result.data);
     res.json(deck);
   });
