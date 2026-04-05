@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Minus, Plus, Trash2, ArrowLeft, Layers, CreditCard,
@@ -1425,6 +1425,20 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
     }
   }, [id, deck?.name, toast]);
 
+  const [, setLocation] = useLocation();
+
+  const cloneSharedDeck = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/shared/${token}/clone`);
+      return r.json();
+    },
+    onSuccess: (newDeck) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      toast({ description: "Shared deck copied to your collection." });
+      setLocation(`/deck/${newDeck.id}`);
+    },
+  });
+
   const handleDeleteCard = useCallback((card: DeckCard) => {
     deleteCard.mutate({ cardId: card.id, permanent: viewDeleted });
   }, [deleteCard, viewDeleted]);
@@ -1499,7 +1513,15 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
               </div>
             )}
 
-            {!isShared && (
+            {isShared ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Button size="sm" onClick={() => cloneSharedDeck.mutate()} disabled={cloneSharedDeck.isPending} className="gap-1.5">
+                  <Layers className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Add to my decks</span>
+                  <span className="sm:hidden">Clone</span>
+                </Button>
+              </div>
+            ) : (
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <Button size="sm" variant="outline"
                   onClick={() => setShowImport(true)}

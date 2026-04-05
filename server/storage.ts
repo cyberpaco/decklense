@@ -11,6 +11,7 @@ export interface IStorage {
   createDeck(deck: InsertDeck): Promise<Deck>;
   updateDeck(id: string, userId: string, updates: Partial<InsertDeck>): Promise<Deck | undefined>;
   deleteDeck(id: string, userId: string): Promise<boolean>;
+  updateDeckStatus(id: string, userId: string, isDeleted: boolean): Promise<Deck | undefined>;
 
   getDeckCards(deckId: string): Promise<DeckCard[]>;
   upsertDeckCard(card: InsertDeckCard): Promise<DeckCard>;
@@ -62,6 +63,14 @@ class DrizzleStorage implements IStorage {
       return true;
     }
     return false;
+  }
+
+  async updateDeckStatus(id: string, userId: string, isDeleted: boolean): Promise<Deck | undefined> {
+    const [d] = await db.update(decks)
+      .set({ isDeleted })
+      .where(and(eq(decks.id, id), eq(decks.userId, userId)))
+      .returning();
+    return d;
   }
 
   async getDeckCards(deckId: string): Promise<DeckCard[]> {

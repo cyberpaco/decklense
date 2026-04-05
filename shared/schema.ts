@@ -9,6 +9,7 @@ export const decks = pgTable("decks", {
   description: text("description"),
   shareToken: varchar("share_token", { length: 36 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  isDeleted: boolean("is_deleted").notNull().default(false),
 });
 
 export const deckCards = pgTable("deck_cards", {

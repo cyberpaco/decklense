@@ -15,7 +15,7 @@ import type { Deck, DeckCard } from "@shared/schema";
 
 interface DeckWithCount extends Deck { cardCount: number; totalValue?: number }
 
-function DeckCard({ deck, onDelete }: { deck: DeckWithCount; onDelete: () => void }) {
+function DeckCard({ deck, onDelete, isRecycleBin, onRestore }: { deck: DeckWithCount; onDelete: () => void; isRecycleBin?: boolean; onRestore?: () => void }) {
   const { data: cards } = useQuery<DeckCard[]>({
     queryKey: ["/api/decks", deck.id, "cards"],
     queryFn: async () => {
@@ -76,13 +76,23 @@ function DeckCard({ deck, onDelete }: { deck: DeckWithCount; onDelete: () => voi
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <Button size="icon" variant="ghost"
-                className="h-7 w-7 flex-shrink-0"
-                onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-                data-testid={`button-delete-deck-${deck.id}`}>
-                <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-              </Button>
-              <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+              {isRecycleBin ? (
+                <>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0 text-green-500 hover:text-green-400" onClick={e => { e.preventDefault(); e.stopPropagation(); onRestore?.(); }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0 text-destructive hover:text-destructive" onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-destructive" onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }} data-testid={`button-delete-deck-${deck.id}`}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -94,6 +104,7 @@ function DeckCard({ deck, onDelete }: { deck: DeckWithCount; onDelete: () => voi
 export default function Decks() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [viewDeletedDecks, setViewDeletedDecks] = useState(false);
   const { toast } = useToast();
   const { user, logout } = useAuth();
 
@@ -107,6 +118,9 @@ export default function Decks() {
     }
   });
 
+  const activeDecks = decks?.filter(d => !!d.isDeleted === viewDeletedDecks) || [];
+  const deletedCount = decks?.filter(d => d.isDeleted).length || 0;
+
   const createDeck = useMutation({
     mutationFn: (name: string) => apiRequest("POST", "/api/decks", { name }),
     onSuccess: () => {
@@ -118,10 +132,19 @@ export default function Decks() {
   });
 
   const deleteDeck = useMutation({
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/decks/${id}`),
+    mutationFn: ({ id, permanent }: { id: string, permanent?: boolean }) =>
+      apiRequest("DELETE", `/api/decks/${id}${permanent ? '?permanent=true' : ''}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
       toast({ description: "Deck deleted" });
+    },
+  });
+
+  const restoreDeck = useMutation({
+    mutationFn: (id: string) => apiRequest("PATCH", `/api/decks/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      toast({ description: "Deck restored" });
     },
   });
 
@@ -142,17 +165,32 @@ export default function Decks() {
               </button>
             </Link>
             <div>
-              <h1 className="font-semibold text-foreground text-lg tracking-tight">My Decks</h1>
+              <h1 className="font-semibold text-foreground text-lg tracking-tight">{viewDeletedDecks ? "Recycle Bin" : "My Decks"}</h1>
               <p className="text-xs text-muted-foreground">
-                {decks?.length ?? 0} deck{(decks?.length ?? 0) !== 1 ? "s" : ""}
+                {activeDecks.length} deck{activeDecks.length !== 1 ? "s" : ""}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => setCreating(true)} data-testid="button-create-deck">
-              <Plus className="w-4 h-4 mr-1" />New Deck
+            <Button
+              size="icon"
+              variant="outline"
+              className={`h-9 w-9 flex-shrink-0 border-border rounded-xl transition-colors ${viewDeletedDecks ? "bg-primary/20 hover:bg-primary/30" : "bg-muted/40 hover:bg-muted/60"}`}
+              onClick={() => setViewDeletedDecks(!viewDeletedDecks)}
+              data-testid="button-open-deck-recycle-bin">
+              <Trash2 className={`w-4 h-4 ${viewDeletedDecks ? "text-primary" : "text-muted-foreground"}`} />
+              {deletedCount > 0 && !viewDeletedDecks && (
+                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {deletedCount}
+                </span>
+              )}
             </Button>
+            {!viewDeletedDecks && (
+              <Button size="sm" onClick={() => setCreating(true)} data-testid="button-create-deck" className="h-9 rounded-xl">
+                <Plus className="w-4 h-4 mr-1" />New Deck
+              </Button>
+            )}
 
             {/* User avatar + logout */}
             <div className="relative group/user">
@@ -215,24 +253,32 @@ export default function Decks() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-2xl" />)}
           </div>
-        ) : decks?.length === 0 ? (
+        ) : activeDecks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
               <Layers className="w-7 h-7 text-muted-foreground/50" />
             </div>
-            <h2 className="font-semibold text-foreground mb-1">No decks yet</h2>
+            <h2 className="font-semibold text-foreground mb-1">{viewDeletedDecks ? "Recycle bin is empty" : "No decks yet"}</h2>
             <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-              Create a deck to start scanning and organizing your cards.
+              {viewDeletedDecks ? "There are no deleted decks at the moment." : "Create a deck to start scanning and organizing your cards."}
             </p>
-            <Button onClick={() => setCreating(true)} data-testid="button-create-deck-empty">
-              <Plus className="w-4 h-4 mr-1.5" />Create first deck
-            </Button>
+            {!viewDeletedDecks && (
+              <Button onClick={() => setCreating(true)} data-testid="button-create-deck-empty">
+                <Plus className="w-4 h-4 mr-1.5" />Create first deck
+              </Button>
+            )}
           </div>
         ) : (
           <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <AnimatePresence mode="popLayout">
-              {decks?.map(deck => (
-                <DeckCard key={deck.id} deck={deck} onDelete={() => deleteDeck.mutate(deck.id)} />
+              {activeDecks.map(deck => (
+                <DeckCard
+                  key={deck.id}
+                  deck={deck}
+                  isRecycleBin={viewDeletedDecks}
+                  onRestore={() => restoreDeck.mutate(deck.id)}
+                  onDelete={() => deleteDeck.mutate({ id: deck.id, permanent: viewDeletedDecks })}
+                />
               ))}
             </AnimatePresence>
           </motion.div>

@@ -255,9 +255,20 @@ export async function registerRoutes(
   });
 
   app.delete("/api/decks/:id", isAuthenticated, async (req: any, res) => {
-    const ok = await storage.deleteDeck(req.params.id, userId(req));
-    if (!ok) return res.status(404).json({ error: "Deck not found" });
+    if (req.query.permanent === "true") {
+      const ok = await storage.deleteDeck(req.params.id, userId(req));
+      if (!ok) return res.status(404).json({ error: "Deck not found" });
+    } else {
+      const deck = await storage.updateDeckStatus(req.params.id, userId(req), true);
+      if (!deck) return res.status(404).json({ error: "Deck not found" });
+    }
     res.json({ success: true });
+  });
+
+  app.patch("/api/decks/:id/restore", isAuthenticated, async (req: any, res) => {
+    const deck = await storage.updateDeckStatus(req.params.id, userId(req), false);
+    if (!deck) return res.status(404).json({ error: "Deck not found" });
+    res.json(deck);
   });
 
   // ── Deck Cards ────────────────────────────────────────────────────────────
@@ -352,6 +363,24 @@ export async function registerRoutes(
     const cards = await storage.getDeckCards(deck.id);
     const cardCount = cards.reduce((s: number, c: any) => s + c.quantity, 0);
     res.json({ deck, cards, cardCount });
+  });
+
+  app.post("/api/shared/:token/clone", isAuthenticated, async (req: any, res) => {
+    const deck = await storage.getDeckByShareToken(req.params.token);
+    if (!deck) return res.status(404).json({ error: "Deck not found" });
+    const newDeck = await storage.createDeck({
+      name: `${deck.name} (Copy)`,
+      userId: userId(req),
+    } as any);
+    const cards = await storage.getDeckCards(deck.id);
+    for (const card of cards) {
+      await storage.upsertDeckCard({
+        ...card,
+        id: undefined,
+        deckId: newDeck.id
+      } as any);
+    }
+    res.json(newDeck);
   });
 
   return httpServer;
