@@ -1004,9 +1004,10 @@ function SortBar({ sortBy, onChange }: { sortBy: SortBy; onChange: (s: SortBy) =
 
 // ── Card Tile ─────────────────────────────────────────────────────────────────
 
-function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSelected, onComboToggle, onComboStart }: {
+function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSelected, onComboToggle, onComboStart, onFullscreen }: {
   card: DeckCard; onIncrease: () => void; onDecrease: () => void; onDelete: () => void;
   isComboMode?: boolean; comboSelected?: boolean; onComboToggle?: () => void; onComboStart?: () => void;
+  onFullscreen?: () => void;
 }) {
   const [imgErr, setImgErr] = useState(false);
   const price = card.priceUsd ? `$${parseFloat(card.priceUsd).toFixed(2)}` : null;
@@ -1032,6 +1033,11 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
     if (isComboMode && onComboToggle) onComboToggle();
   }, [isComboMode, onComboToggle]);
 
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isComboMode && onFullscreen) onFullscreen();
+  }, [isComboMode, onFullscreen]);
+
   // Synchronized wiggle: use CSS animation with a global class so all wiggling cards
   // share the same animation timeline (CSS animations auto-sync when using the same @keyframes).
   const wiggleClass = isComboMode && comboSelected ? "combo-wiggle" : "";
@@ -1042,6 +1048,7 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       className={`group relative bg-card border rounded-xl overflow-visible hover-elevate ${RARITY_RING[card.rarity ?? ""] ?? "border-border"} ${isComboMode && comboSelected ? "ring-4 ring-primary" : ""} ${wiggleClass}`}
       style={{ transformOrigin: "center center" }}
       data-testid={`card-item-${card.id}`}>
@@ -1126,6 +1133,7 @@ export default function DeckDetail() {
   const [comboCards, setComboCards] = useState<string[]>([]);
   const [comboNameModalOpen, setComboNameModalOpen] = useState<boolean>(false);
   const [comboName, setComboName] = useState<string>("");
+  const [fullscreenCard, setFullscreenCard] = useState<DeckCard | null>(null);
 
   const { data: deck, isLoading: deckLoading } = useQuery<Deck>({
     queryKey: ["/api/decks", id],
@@ -1416,6 +1424,7 @@ export default function DeckDetail() {
                             onComboToggle={() => {
                               setComboCards(prev => prev.includes(card.id) ? prev.filter(x => x !== card.id) : [...prev, card.id]);
                             }}
+                            onFullscreen={() => setFullscreenCard(card)}
                             onIncrease={() => updateQty.mutate({ cardId: card.id, quantity: card.quantity + 1 })}
                             onDecrease={() => {
                               if (card.quantity <= 1) deleteCard.mutate(card.id);
@@ -1440,6 +1449,7 @@ export default function DeckDetail() {
                       onComboToggle={() => {
                         setComboCards(prev => prev.includes(card.id) ? prev.filter(x => x !== card.id) : [...prev, card.id]);
                       }}
+                      onFullscreen={() => setFullscreenCard(card)}
                       onIncrease={() => updateQty.mutate({ cardId: card.id, quantity: card.quantity + 1 })}
                       onDecrease={() => {
                         if (card.quantity <= 1) deleteCard.mutate(card.id);
@@ -1484,6 +1494,49 @@ export default function DeckDetail() {
             <Button size="sm" variant="ghost" className="text-muted-foreground hover:bg-muted/50" onClick={() => { setMarkingCombo(false); setComboCards([]); }}>
               Cancel
             </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fullscreen card overlay */}
+      <AnimatePresence>
+        {fullscreenCard && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center cursor-pointer"
+            onClick={() => setFullscreenCard(null)}
+            onDoubleClick={() => setFullscreenCard(null)}>
+            <motion.div
+              initial={{ scale: 0.7, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.7, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="max-w-sm w-full mx-4"
+              onClick={e => e.stopPropagation()}>
+              {fullscreenCard.imageUri ? (
+                <img
+                  src={fullscreenCard.imageUri}
+                  alt={fullscreenCard.cardName ?? "Card"}
+                  className="w-full rounded-2xl shadow-2xl"
+                  onDoubleClick={() => setFullscreenCard(null)}
+                />
+              ) : (
+                <div className="w-full aspect-[5/7] bg-card rounded-2xl flex items-center justify-center"
+                  onDoubleClick={() => setFullscreenCard(null)}>
+                  <CreditCard className="w-16 h-16 text-muted-foreground/30" />
+                </div>
+              )}
+              <div className="mt-3 text-center">
+                <p className="text-white font-semibold text-lg">{fullscreenCard.cardName ?? "Unknown"}</p>
+                <p className="text-white/60 text-xs mt-1">
+                  {fullscreenCard.setCode?.toUpperCase()} #{fullscreenCard.collectorNumber}
+                  {fullscreenCard.priceUsd && <span className="ml-2 text-green-400">${parseFloat(fullscreenCard.priceUsd).toFixed(2)}</span>}
+                </p>
+                <p className="text-white/40 text-[11px] mt-3">Tap or double-tap to close</p>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

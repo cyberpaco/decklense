@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Layers, X, Check, ChevronDown, Plus, CreditCard,
   Loader2, AlertCircle, Search, DollarSign, Type, Hash,
+  Mic, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +98,22 @@ async function fetchScryfallById(
     if (!res.ok) return null;
     return mapScryfall(await res.json());
   } catch { return null; }
+}
+
+// Fetch all printings (different artworks) of a card by name
+async function fetchScryfallPrintings(name: string): Promise<ScannedCard[]> {
+  if (!name.trim()) return [];
+  try {
+    const res = await fetch(
+      `https://api.scryfall.com/cards/search?q=${encodeURIComponent('!"' + name.trim() + '"')}&unique=prints&order=released`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.data || !Array.isArray(data.data)) return [];
+    return data.data
+      .filter((d: any) => d.image_uris?.normal || d.card_faces?.[0]?.image_uris?.normal)
+      .map(mapScryfall);
+  } catch { return []; }
 }
 
 // ── Rarity pill colour ─────────────────────────────────────────────────────────
@@ -205,6 +222,11 @@ function CardDrawer({ initial, deck, onAdd, onClose }: {
   const [isAdding, setIsAdding] = useState(false);
   const [imgErr, setImgErr]     = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  // Artwork carousel state
+  const [printings, setPrintings] = useState<ScannedCard[]>([]);
+  const [printingIdx, setPrintingIdx] = useState(0);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -218,6 +240,7 @@ function CardDrawer({ initial, deck, onAdd, onClose }: {
     name = cardName, sc = setCode, num = number,
   ) {
     setState("loading"); setCard(null); setImgErr(false); setLastMode(mode);
+    setPrintings([]); setPrintingIdx(0);
     let result: ScannedCard | null = null;
     if (mode === "name") {
       result = await fetchScryfallByName(name);
@@ -237,11 +260,61 @@ function CardDrawer({ initial, deck, onAdd, onClose }: {
       setSetCode(result.setCode);
       setNumber(result.collectorNumber);
       setState("found");
+      // Load all printings for the carousel
+      const prints = await fetchScryfallPrintings(result.name);
+      if (prints.length > 1) {
+        setPrintings(prints);
+        // Find the index of the current card in the printings
+        const idx = prints.findIndex(p => p.setCode === result!.setCode && p.collectorNumber === result!.collectorNumber);
+        setPrintingIdx(idx >= 0 ? idx : 0);
+      }
     } else {
       setState("not_found");
       toast({ description: "Card not found — edit the fields and try again" });
     }
   }
+
+  // Voice input via Web Speech API
+  const startListening = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast({ description: "Voice input not supported in this browser" });
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setCardName(transcript);
+      setState("idle");
+      setIsListening(false);
+      // Auto-search after voice
+      setTimeout(() => doSearch("name", transcript), 100);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }, [toast]);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  }, []);
+
+  // Carousel navigation
+  const selectPrinting = useCallback((idx: number) => {
+    const p = printings[idx];
+    if (!p) return;
+    setPrintingIdx(idx);
+    setCard(p);
+    setSetCode(p.setCode);
+    setNumber(p.collectorNumber);
+    setImgErr(false);
+  }, [printings]);
 
   const price = card?.priceUsd ? `$${card.priceUsd}` : card?.priceEur ? `€${card.priceEur}` : null;
 
@@ -294,12 +367,21 @@ function CardDrawer({ initial, deck, onAdd, onClose }: {
                 )}
               </label>
               <div className="flex gap-2">
-                <input value={cardName}
-                  onChange={e => { setCardName(e.target.value); setState("idle"); }}
-                  onKeyDown={e => e.key === "Enter" && doSearch("name")}
-                  placeholder="e.g. Lightning Bolt"
-                  className="flex-1 rounded-xl border border-input bg-muted/40 px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  data-testid="input-card-name" />
+                <div className="flex-1 relative">
+                  <input value={cardName}
+                    onChange={e => { setCardName(e.target.value); setState("idle"); }}
+                    onKeyDown={e => e.key === "Enter" && doSearch("name")}
+                    placeholder="e.g. Lightning Bolt"
+                    className="w-full rounded-xl border border-input bg-muted/40 px-3.5 py-2.5 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    data-testid="input-card-name" />
+                  <button
+                    onClick={isListening ? stopListening : startListening}
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center transition-colors ${isListening ? "bg-red-500 text-white animate-pulse" : "bg-red-500/15 text-red-500 hover:bg-red-500/25"}`}
+                    data-testid="button-voice-input"
+                    type="button">
+                    <Mic className="w-3.5 h-3.5" />
+                  </button>
+                </div>
                 <Button size="sm" variant="secondary"
                   onClick={() => doSearch("name")}
                   disabled={state === "loading" || !cardName.trim()}
@@ -363,13 +445,35 @@ function CardDrawer({ initial, deck, onAdd, onClose }: {
             {state === "found" && card && (
               <>
                 <div className="flex gap-4 mb-4">
-                  <div className="flex-shrink-0 w-24 rounded-xl overflow-hidden shadow-lg aspect-[5/7] bg-muted">
-                    {card.imageUri && !imgErr ? (
-                      <img src={card.imageUri} alt={card.name} className="w-full h-full object-cover"
-                        onError={() => setImgErr(true)} data-testid="img-confirm-card" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <CreditCard className="w-8 h-8 text-muted-foreground/40" />
+                  <div className="flex-shrink-0 w-24 relative">
+                    <div className="rounded-xl overflow-hidden shadow-lg aspect-[5/7] bg-muted">
+                      {card.imageUri && !imgErr ? (
+                        <img src={card.imageUri} alt={card.name} className="w-full h-full object-cover"
+                          onError={() => setImgErr(true)} data-testid="img-confirm-card" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <CreditCard className="w-8 h-8 text-muted-foreground/40" />
+                        </div>
+                      )}
+                    </div>
+                    {/* Artwork carousel arrows */}
+                    {printings.length > 1 && (
+                      <div className="flex items-center justify-between mt-1.5">
+                        <button
+                          onClick={() => selectPrinting((printingIdx - 1 + printings.length) % printings.length)}
+                          className="w-6 h-6 rounded-full bg-muted flex items-center justify-center hover:bg-muted-foreground/20 transition-colors"
+                          data-testid="button-prev-art">
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-[9px] text-muted-foreground font-medium">
+                          {printingIdx + 1}/{printings.length}
+                        </span>
+                        <button
+                          onClick={() => selectPrinting((printingIdx + 1) % printings.length)}
+                          className="w-6 h-6 rounded-full bg-muted flex items-center justify-center hover:bg-muted-foreground/20 transition-colors"
+                          data-testid="button-next-art">
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     )}
                   </div>
