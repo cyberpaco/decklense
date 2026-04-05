@@ -861,7 +861,11 @@ export default function Scanner() {
                 : <div className="w-14 h-14 rounded-full bg-white" />}
             </button>
 
-            <div className="w-11 h-11" />
+            <button onClick={() => setDrawerFields({ cardName: "", setCode: "", number: "" })}
+               className="w-11 h-11 rounded-full bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center cursor-pointer hover:bg-white/20 transition-colors"
+               data-testid="button-manual-search">
+              <Search className="w-5 h-5 text-white" />
+            </button>
           </div>
 
           {cameraReady && hasDecks && (
