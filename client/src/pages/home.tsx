@@ -18,7 +18,11 @@ interface DeckWithCount extends Deck { cardCount: number; totalValue?: number }
 function DeckCard({ deck, onDelete }: { deck: DeckWithCount; onDelete: () => void }) {
   const { data: cards } = useQuery<DeckCard[]>({
     queryKey: ["/api/decks", deck.id, "cards"],
-    queryFn: () => fetch(`/api/decks/${deck.id}/cards`).then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/decks/${deck.id}/cards`);
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
   });
 
   const previews = cards?.filter(c => c.imageUri).slice(0, 3) ?? [];
@@ -93,7 +97,15 @@ export default function Decks() {
   const { toast } = useToast();
   const { user, logout } = useAuth();
 
-  const { data: decks, isLoading } = useQuery<DeckWithCount[]>({ queryKey: ["/api/decks"] });
+  const { data: decks, isLoading } = useQuery<DeckWithCount[]>({
+    queryKey: ["/api/decks"],
+    queryFn: async () => {
+      const r = await fetch("/api/decks");
+      if (!r.ok) throw new Error(await r.text());
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
+    }
+  });
 
   const createDeck = useMutation({
     mutationFn: (name: string) => apiRequest("POST", "/api/decks", { name }),

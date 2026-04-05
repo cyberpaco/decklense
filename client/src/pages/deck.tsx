@@ -1101,12 +1101,21 @@ export default function DeckDetail() {
 
   const { data: deck, isLoading: deckLoading } = useQuery<Deck>({
     queryKey: ["/api/decks", id],
-    queryFn: () => fetch(`/api/decks/${id}`).then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/decks/${id}`);
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
     enabled: !!id,
   });
   const { data: cards, isLoading: cardsLoading } = useQuery<DeckCard[]>({
     queryKey: ["/api/decks", id, "cards"],
-    queryFn: () => fetch(`/api/decks/${id}/cards`).then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/decks/${id}/cards`);
+      if (!r.ok) throw new Error(await r.text());
+      const data = await r.json();
+      return Array.isArray(data) ? data : [];
+    },
     enabled: !!id,
   });
 
