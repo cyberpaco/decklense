@@ -77,7 +77,7 @@ function DeckCard({ deck, onDelete }: { deck: DeckWithCount; onDelete: () => voi
             </div>
             <div className="flex items-center gap-1">
               <Button size="icon" variant="ghost"
-                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                className="h-7 w-7 flex-shrink-0"
                 onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
                 data-testid={`button-delete-deck-${deck.id}`}>
                 <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />

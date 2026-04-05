@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, integer, real, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -27,6 +27,7 @@ export const deckCards = pgTable("deck_cards", {
   colors: text("colors").array(),
   priceUsd: text("price_usd"),
   combo: text("combo"),
+  isDeleted: boolean("is_deleted").notNull().default(false),
 });
 
 export const insertDeckSchema = createInsertSchema(decks).omit({ createdAt: true });

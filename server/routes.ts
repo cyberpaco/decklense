@@ -311,9 +311,24 @@ export async function registerRoutes(
   app.delete("/api/decks/:deckId/cards/:cardId", isAuthenticated, async (req: any, res) => {
     const deck = await storage.getDeck(req.params.deckId, userId(req));
     if (!deck) return res.status(404).json({ error: "Deck not found" });
-    const ok = await storage.removeDeckCard(req.params.cardId);
-    if (!ok) return res.status(404).json({ error: "Card not found" });
+
+    if (req.query.permanent === "true") {
+      const ok = await storage.removeDeckCard(req.params.cardId);
+      if (!ok) return res.status(404).json({ error: "Card not found" });
+    } else {
+      const card = await storage.updateDeckCardStatus(req.params.cardId, true);
+      if (!card) return res.status(404).json({ error: "Card not found" });
+    }
     res.json({ success: true });
+  });
+
+  app.patch("/api/decks/:deckId/cards/:cardId/restore", isAuthenticated, async (req: any, res) => {
+    const deck = await storage.getDeck(req.params.deckId, userId(req));
+    if (!deck) return res.status(404).json({ error: "Deck not found" });
+    
+    const card = await storage.updateDeckCardStatus(req.params.cardId, false);
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    res.json(card);
   });
 
   // ── Share ──────────────────────────────────────────────────────────────────

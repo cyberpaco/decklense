@@ -1004,10 +1004,10 @@ function SortBar({ sortBy, onChange }: { sortBy: SortBy; onChange: (s: SortBy) =
 
 // ── Card Tile ─────────────────────────────────────────────────────────────────
 
-function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSelected, onComboToggle, onComboStart, onFullscreen, isShared }: {
+function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSelected, onComboToggle, onComboStart, onFullscreen, isShared, isRecycleBin, onRestore }: {
   card: DeckCard; onIncrease: () => void; onDecrease: () => void; onDelete: () => void;
   isComboMode?: boolean; comboSelected?: boolean; onComboToggle?: () => void; onComboStart?: () => void;
-  onFullscreen?: () => void; isShared?: boolean;
+  onFullscreen?: () => void; isShared?: boolean; isRecycleBin?: boolean; onRestore?: () => void;
 }) {
   const [imgErr, setImgErr] = useState(false);
   const price = card.priceUsd ? `$${parseFloat(card.priceUsd).toFixed(2)}` : null;
@@ -1073,13 +1073,24 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
         )}
         {!isComboMode && !isShared && (
           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-1 pb-2">
-            <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={e => { e.stopPropagation(); onDecrease(); }}
-              data-testid={`button-decrease-${card.id}`}><Minus className="w-3 h-3" /></Button>
-            <span className="text-white font-bold text-sm w-5 text-center">{card.quantity}</span>
-            <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={e => { e.stopPropagation(); onIncrease(); }}
-              data-testid={`button-increase-${card.id}`}><Plus className="w-3 h-3" /></Button>
-            <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90 ml-1" onClick={e => { e.stopPropagation(); onDelete(); }}
-              data-testid={`button-delete-card-${card.id}`}><Trash2 className="w-3 h-3 text-destructive" /></Button>
+            {isRecycleBin ? (
+              <>
+                <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90 text-green-500" onClick={e => { e.stopPropagation(); onRestore?.(); }}
+                  data-testid={`button-restore-card-${card.id}`}><Undo2 className="w-3.5 h-3.5" /></Button>
+                <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90 ml-1 text-destructive" onClick={e => { e.stopPropagation(); onDelete(); }}
+                  data-testid={`button-permanent-delete-card-${card.id}`}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </>
+            ) : (
+              <>
+                <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={e => { e.stopPropagation(); onDecrease(); }}
+                  data-testid={`button-decrease-${card.id}`}><Minus className="w-3 h-3" /></Button>
+                <span className="text-white font-bold text-sm w-5 text-center">{card.quantity}</span>
+                <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={e => { e.stopPropagation(); onIncrease(); }}
+                  data-testid={`button-increase-${card.id}`}><Plus className="w-3 h-3" /></Button>
+                <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90 ml-1" onClick={e => { e.stopPropagation(); onDelete(); }}
+                  data-testid={`button-delete-card-${card.id}`}><Trash2 className="w-3 h-3 text-destructive" /></Button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1182,14 +1193,14 @@ function ComboDrawer({
   );
 }
 
-// ── Deleted Cards Drawer ────────────────────────────────────────────────────────
-function DeletedCardsDrawer({
-  deletedStack,
-  onRestore,
+// ── Search Drawer ──────────────────────────────────────────────────────────────
+function SearchDrawer({
+  query,
+  onQuery,
   onClose
 }: {
-  deletedStack: DeckCard[];
-  onRestore: (card: DeckCard) => void;
+  query: string;
+  onQuery: (q: string) => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -1220,42 +1231,27 @@ function DeletedCardsDrawer({
         </div>
 
         <div className="px-5 pb-2 flex-shrink-0 mb-4">
-          <h3 className="text-lg font-bold text-foreground">Recycle Bin</h3>
-          <p className="text-sm text-muted-foreground">
-            Restore cards deleted during this session.
-          </p>
+          <h3 className="text-lg font-bold text-foreground">Search Cards</h3>
+          <p className="text-sm text-muted-foreground">Filter your set by name or stats</p>
         </div>
 
-        <div className="px-5 overflow-y-auto space-y-3 pb-4 flex-1">
-          {deletedStack.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">
-              <Trash2 className="w-8 h-8 opacity-40 mx-auto mb-2" />
-              <p className="text-sm">Recycle bin is empty</p>
-            </div>
-          ) : (
-            deletedStack.slice().reverse().map((card, i) => (
-              <div key={`${card.id}-${i}`} className="flex items-center gap-3 bg-card border rounded-xl p-3 shadow-sm">
-                <div className="w-12 h-16 bg-muted rounded overflow-hidden shadow shrink-0">
-                  {card.imageUri ? (
-                    <img src={card.imageUri} alt={card.cardName ?? ""} className="w-full h-full object-cover" />
-                  ) : <CreditCard className="w-full h-full p-2 opacity-30" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{card.cardName ?? "Unknown"}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase mt-0.5">{card.setCode} #{card.collectorNumber}</p>
-                </div>
-                <Button size="sm" variant="secondary" onClick={() => onRestore(card)} className="shrink-0 gap-1.5">
-                  <Undo2 className="w-3.5 h-3.5" />
-                  Restore
-                </Button>
-              </div>
-            ))
-          )}
+        <div className="px-5 space-y-4 pb-4 flex-1 overflow-y-auto">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              autoFocus
+              placeholder="e.g. Lotus, Artifact..."
+              value={query}
+              onChange={e => onQuery(e.target.value)}
+              className="pl-9 h-12 bg-muted/40 border-none rounded-xl text-base w-full"
+              onKeyDown={e => { if (e.key === "Enter") onClose(); }}
+            />
+          </div>
         </div>
         
         <div className="px-5 pt-2 flex-shrink-0">
           <Button variant="outline" className="w-full h-12 rounded-xl" onClick={onClose}>
-            Close
+            Done
           </Button>
         </div>
       </motion.div>
@@ -1303,6 +1299,7 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
   const [fullscreenCard, setFullscreenCard] = useState<DeckCard | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [viewDeleted, setViewDeleted] = useState(false);
 
   // Shared deck fetch
   const { data: sharedData, isLoading: sharedLoading } = useQuery<{ deck: Deck; cards: DeckCard[]; cardCount: number }>({
@@ -1345,12 +1342,15 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
   
   const sortedCards = useMemo(() => {
     let sorted = sortCards(cards ?? [], sortBy);
+    sorted = sorted.filter(c => !!c.isDeleted === viewDeleted);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       sorted = sorted.filter(c => (c.cardName ?? "").toLowerCase().includes(q));
     }
     return sorted;
-  }, [cards, sortBy, searchQuery]);
+  }, [cards, sortBy, searchQuery, viewDeleted]);
+
+  const deletedCount = cards?.filter(c => c.isDeleted).length || 0;
 
   const updateName = useMutation({
     mutationFn: (name: string) => apiRequest("PATCH", `/api/decks/${id}`, { name }),
@@ -1369,7 +1369,8 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
     },
   });
   const deleteCard = useMutation({
-    mutationFn: (cardId: string) => apiRequest("DELETE", `/api/decks/${id}/cards/${cardId}`),
+    mutationFn: ({ cardId, permanent }: { cardId: string, permanent?: boolean }) =>
+      apiRequest("DELETE", `/api/decks/${id}/cards/${cardId}${permanent ? '?permanent=true' : ''}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/decks", id, "cards"] });
       queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
@@ -1391,27 +1392,9 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
     }
   });
 
-  // Deleted cards stack for undo
-  const [deletedStack, setDeletedStack] = useState<DeckCard[]>([]);
-  const [recycleBinOpen, setRecycleBinOpen] = useState(false);
-
   const restoreCard = useMutation({
-    mutationFn: async (card: DeckCard) => {
-      await apiRequest("POST", `/api/decks/${id}/cards`, {
-        setCode: card.setCode,
-        collectorNumber: card.collectorNumber,
-        cardName: card.cardName,
-        typeLine: card.typeLine,
-        manaCost: card.manaCost,
-        cmc: card.cmc,
-        rarity: card.rarity,
-        imageUri: card.imageUri,
-        scryfallId: card.scryfallId,
-        colors: card.colors,
-        priceUsd: card.priceUsd,
-        combo: card.combo,
-        quantity: card.quantity,
-      });
+    mutationFn: async (cardId: string) => {
+      await apiRequest("PATCH", `/api/decks/${id}/cards/${cardId}/restore`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/decks", id, "cards"] });
@@ -1442,16 +1425,14 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
     }
   }, [id, deck?.name, toast]);
 
-  // Wrap deleteCard to push to deleted stack
   const handleDeleteCard = useCallback((card: DeckCard) => {
-    setDeletedStack(prev => [...prev, card]);
-    deleteCard.mutate(card.id);
-  }, [deleteCard]);
+    deleteCard.mutate({ cardId: card.id, permanent: viewDeleted });
+  }, [deleteCard, viewDeleted]);
 
   if (!activeId) return null;
 
   // Build grouped card list (only show group headers for type/subtype/color/cmc sorts)
-  const useGroups = ["type","subtype","color","cmc","combo"].includes(sortBy);
+  const useGroups = !viewDeleted && ["type","subtype","color","cmc","combo"].includes(sortBy);
   const groups: { label: string; cards: DeckCard[] }[] = [];
   if (useGroups && sortedCards.length > 0) {
     let cur: DeckCard[] = [];
@@ -1592,55 +1573,40 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
           ) : (
             <>
               {/* Search, Sort, and Recycle Bin */}
-              <div className="mb-4 flex flex-col gap-3">
-                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                  <SortBar sortBy={sortBy} onChange={setSortBy} />
-                  
-                  <Button
-                    size="icon"
-                    variant={showSearch ? "secondary" : "outline"}
-                    className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl"
-                    onClick={() => {
-                      setShowSearch(!showSearch);
-                      if (showSearch) setSearchQuery(""); // clear on close
-                    }}
-                    data-testid="button-toggle-search">
-                    <Search className="w-4 h-4 text-muted-foreground" />
-                  </Button>
+              <div className="mb-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <SortBar sortBy={sortBy} onChange={setSortBy} />
+                    
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl"
+                      onClick={() => setShowSearch(true)}
+                      data-testid="button-toggle-search">
+                      <Search className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  </div>
 
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl relative"
-                    onClick={() => setRecycleBinOpen(true)}
-                    data-testid="button-open-recycle-bin">
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    {deletedStack.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                        {deletedStack.length}
-                      </span>
-                    )}
-                  </Button>
+                  {!isShared && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className={`h-10 w-10 flex-shrink-0 border-none rounded-xl relative transition-colors ${viewDeleted ? "bg-primary/20 hover:bg-primary/30" : "bg-muted/40 hover:bg-muted/60"}`}
+                      onClick={() => {
+                        setViewDeleted(!viewDeleted);
+                        if (searchQuery) setSearchQuery("");
+                      }}
+                      data-testid="button-open-recycle-bin">
+                      <Trash2 className={`w-4 h-4 ${viewDeleted ? "text-primary" : "text-muted-foreground"}`} />
+                      {deletedCount > 0 && !viewDeleted && (
+                        <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                          {deletedCount}
+                        </span>
+                      )}
+                    </Button>
+                  )}
                 </div>
-
-                {showSearch && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="relative w-full max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      autoFocus
-                      placeholder="Search cards..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                      className="pl-9 h-10 bg-muted/40 border-none rounded-xl w-full"
-                      list="deck-card-names"
-                    />
-                    <datalist id="deck-card-names">
-                      {Array.from(new Set(cards?.map(c => c.cardName).filter(Boolean))).map(name => (
-                        <option key={name} value={name!} />
-                      ))}
-                    </datalist>
-                  </motion.div>
-                )}
               </div>
 
               {/* Grouped or flat grid */}
@@ -1795,15 +1761,8 @@ export default function DeckDetail({ isShared = false }: { isShared?: boolean })
       </AnimatePresence>
 
       <AnimatePresence>
-        {recycleBinOpen && (
-          <DeletedCardsDrawer
-            deletedStack={deletedStack}
-            onClose={() => setRecycleBinOpen(false)}
-            onRestore={(card) => {
-              setDeletedStack(prev => prev.filter(c => c.id !== card.id));
-              restoreCard.mutate(card);
-            }}
-          />
+        {showSearch && (
+          <SearchDrawer query={searchQuery} onQuery={setSearchQuery} onClose={() => setShowSearch(false)} />
         )}
       </AnimatePresence>
     </div>

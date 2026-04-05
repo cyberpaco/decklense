@@ -16,6 +16,7 @@ export interface IStorage {
   upsertDeckCard(card: InsertDeckCard): Promise<DeckCard>;
   updateDeckCardQuantity(id: string, quantity: number): Promise<DeckCard | undefined>;
   updateDeckCard(id: string, updates: Partial<InsertDeckCard>): Promise<DeckCard | undefined>;
+  updateDeckCardStatus(id: string, isDeleted: boolean): Promise<DeckCard | undefined>;
   removeDeckCard(id: string): Promise<boolean>;
 }
 
@@ -102,6 +103,14 @@ class DrizzleStorage implements IStorage {
   async updateDeckCard(id: string, updates: Partial<InsertDeckCard>): Promise<DeckCard | undefined> {
     const [updated] = await db.update(deckCards)
       .set(updates)
+      .where(eq(deckCards.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateDeckCardStatus(id: string, isDeleted: boolean): Promise<DeckCard | undefined> {
+    const [updated] = await db.update(deckCards)
+      .set({ isDeleted })
       .where(eq(deckCards.id, id))
       .returning();
     return updated;
