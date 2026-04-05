@@ -31,7 +31,7 @@ export const deckCards = pgTable("deck_cards", {
   isDeleted: boolean("is_deleted").notNull().default(false),
 });
 
-export const insertDeckSchema = createInsertSchema(decks).omit({ createdAt: true });
+export const insertDeckSchema = createInsertSchema(decks).omit({ createdAt: true, isDeleted: true });
 export const insertDeckCardSchema = createInsertSchema(deckCards);
 
 export type InsertDeck = z.infer<typeof insertDeckSchema>;
