@@ -129,6 +129,12 @@ export default function Decks() {
       setNewName("");
       toast({ description: "Deck created" });
     },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        description: `Failed to create deck: ${error.message}`
+      });
+    }
   });
 
   const deleteDeck = useMutation({
