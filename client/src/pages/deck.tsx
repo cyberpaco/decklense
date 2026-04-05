@@ -1098,6 +1098,7 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
 }
 
 // ── Combo Naming Drawer ────────────────────────────────────────────────────────
+// ── Combo Naming Drawer ────────────────────────────────────────────────────────
 function ComboDrawer({
   selectedCount,
   onSave,
@@ -1111,12 +1112,14 @@ function ComboDrawer({
 }) {
   const [name, setName] = useState("");
   return (
-    <motion.div className="fixed inset-x-0 bottom-0 z-[70]"
-      initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-      transition={{ type: "spring", damping: 28, stiffness: 320 }}>
-      {/* Background overlay */}
-      <div className="absolute inset-0 -top-screen pointer-events-none" />
-      <div className="bg-background/97 backdrop-blur-2xl rounded-t-3xl shadow-2xl border-t border-border/50"
+    <motion.div className="fixed inset-0 z-[70] flex flex-col justify-end pointer-events-none"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      {/* Background overlay is separate so it doesn't animate with the Y transition */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
+      
+      <motion.div className="relative bg-background/97 backdrop-blur-2xl rounded-t-3xl shadow-2xl border-t border-border/50 pointer-events-auto"
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 28, stiffness: 320 }}
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}>
         
         <div className="w-full flex items-center justify-center py-4">
@@ -1156,7 +1159,75 @@ function ComboDrawer({
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Deleted Cards Drawer ────────────────────────────────────────────────────────
+function DeletedCardsDrawer({
+  deletedStack,
+  onRestore,
+  onClose
+}: {
+  deletedStack: DeckCard[];
+  onRestore: (card: DeckCard) => void;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div className="fixed inset-0 z-[70] flex flex-col justify-end pointer-events-none"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
+      
+      <motion.div className="relative bg-background/97 backdrop-blur-2xl rounded-t-3xl shadow-2xl border-t border-border/50 pointer-events-auto flex flex-col max-h-[85vh]"
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 28, stiffness: 320 }}
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}>
+        
+        <div className="w-full flex items-center justify-center py-4 flex-shrink-0">
+          <div className="w-10 h-1.5 bg-muted-foreground/30 rounded-full" />
+        </div>
+
+        <div className="px-5 pb-2 flex-shrink-0 mb-4">
+          <h3 className="text-lg font-bold text-foreground">Recycle Bin</h3>
+          <p className="text-sm text-muted-foreground">
+            Restore cards deleted during this session.
+          </p>
+        </div>
+
+        <div className="px-5 overflow-y-auto space-y-3 pb-4 flex-1">
+          {deletedStack.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              <Trash2 className="w-8 h-8 opacity-40 mx-auto mb-2" />
+              <p className="text-sm">Recycle bin is empty</p>
+            </div>
+          ) : (
+            deletedStack.slice().reverse().map((card, i) => (
+              <div key={`${card.id}-${i}`} className="flex items-center gap-3 bg-card border rounded-xl p-3 shadow-sm">
+                <div className="w-12 h-16 bg-muted rounded overflow-hidden shadow shrink-0">
+                  {card.imageUri ? (
+                    <img src={card.imageUri} alt={card.cardName ?? ""} className="w-full h-full object-cover" />
+                  ) : <CreditCard className="w-full h-full p-2 opacity-30" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{card.cardName ?? "Unknown"}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase mt-0.5">{card.setCode} #{card.collectorNumber}</p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => onRestore(card)} className="shrink-0 gap-1.5">
+                  <Undo2 className="w-3.5 h-3.5" />
+                  Restore
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+        
+        <div className="px-5 pt-2 flex-shrink-0">
+          <Button variant="outline" className="w-full h-12 rounded-xl" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }
@@ -1273,6 +1344,7 @@ export default function DeckDetail() {
 
   // Deleted cards stack for undo
   const [deletedStack, setDeletedStack] = useState<DeckCard[]>([]);
+  const [recycleBinOpen, setRecycleBinOpen] = useState(false);
 
   const restoreCard = useMutation({
     mutationFn: async (card: DeckCard) => {
@@ -1458,14 +1530,14 @@ export default function DeckDetail() {
           ) : (
             <>
               {/* Search, Sort, and Recycle Bin */}
-              <div className="mb-4 flex flex-col sm:flex-row items-center gap-3">
-                <div className="relative flex-1 w-full">
+              <div className="mb-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="relative flex-1 w-full max-w-sm">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     placeholder="Search cards..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="pl-9 h-10 bg-muted/40 border-none rounded-xl"
+                    className="pl-9 h-10 bg-muted/40 border-none rounded-xl w-full"
                     list="deck-card-names"
                   />
                   <datalist id="deck-card-names">
@@ -1475,23 +1547,22 @@ export default function DeckDetail() {
                   </datalist>
                 </div>
                 
-                <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar">
+                <div className="flex items-center gap-2 w-full sm:w-auto self-end sm:self-auto justify-between sm:justify-start">
                   <SortBar sortBy={sortBy} onChange={setSortBy} />
                   
-                  {deletedStack.length > 0 && (
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl"
-                      onClick={() => {
-                        const last = deletedStack[deletedStack.length - 1];
-                        setDeletedStack(prev => prev.slice(0, -1));
-                        restoreCard.mutate(last);
-                      }}
-                      data-testid="button-restore-card">
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
-                  )}
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl relative"
+                    onClick={() => setRecycleBinOpen(true)}
+                    data-testid="button-open-recycle-bin">
+                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    {deletedStack.length > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                        {deletedStack.length}
+                      </span>
+                    )}
+                  </Button>
                 </div>
               </div>
 
@@ -1637,16 +1708,25 @@ export default function DeckDetail() {
 
       <AnimatePresence>
         {comboNameModalOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[65]" onClick={() => setComboNameModalOpen(false)} />
-            <ComboDrawer
-              selectedCount={comboCards.length}
-              onClose={() => setComboNameModalOpen(false)}
-              onSave={name => updateCombo.mutate({ combo: name, cardIds: comboCards })}
-              isPending={updateCombo.isPending}
-            />
-          </>
+          <ComboDrawer
+            selectedCount={comboCards.length}
+            onClose={() => setComboNameModalOpen(false)}
+            onSave={name => updateCombo.mutate({ combo: name, cardIds: comboCards })}
+            isPending={updateCombo.isPending}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {recycleBinOpen && (
+          <DeletedCardsDrawer
+            deletedStack={deletedStack}
+            onClose={() => setRecycleBinOpen(false)}
+            onRestore={(card) => {
+              setDeletedStack(prev => prev.filter(c => c.id !== card.id));
+              restoreCard.mutate(card);
+            }}
+          />
         )}
       </AnimatePresence>
     </div>
