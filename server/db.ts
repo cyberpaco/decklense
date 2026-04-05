@@ -55,6 +55,10 @@ export async function ensureTables() {
 
       -- Add share_token column if it doesn't exist (safe migration)
       ALTER TABLE "decks" ADD COLUMN IF NOT EXISTS "share_token" VARCHAR(36);
+
+      -- Add is_deleted column if it doesn't exist (safe migration)
+      ALTER TABLE "decks" ADD COLUMN IF NOT EXISTS "is_deleted" BOOLEAN DEFAULT FALSE NOT NULL;
+      ALTER TABLE "deck_cards" ADD COLUMN IF NOT EXISTS "is_deleted" BOOLEAN DEFAULT FALSE NOT NULL;
     `);
     console.log("Database tables ensured.");
   } catch (err) {
