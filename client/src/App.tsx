@@ -9,6 +9,7 @@ import NotFound from "@/pages/not-found";
 import Scanner from "@/pages/scanner";
 import Decks from "@/pages/home";
 import DeckDetail from "@/pages/deck";
+import SharedDeckView from "@/pages/shared-deck";
 import LoginPage from "@/pages/login";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -55,15 +56,23 @@ function PrivacyBanner() {
 function Router() {
   const { user, isLoading } = useAuth();
 
-  if (isLoading) return <LoadingScreen />;
-  if (!user) return <LoginPage />;
-
   return (
     <Switch>
-      <Route path="/" component={Scanner} />
-      <Route path="/decks" component={Decks} />
-      <Route path="/deck/:id" component={DeckDetail} />
-      <Route component={NotFound} />
+      {/* Public route — accessible without login */}
+      <Route path="/shared/:token" component={SharedDeckView} />
+      {/* Auth-guarded routes */}
+      {isLoading ? (
+        <Route><LoadingScreen /></Route>
+      ) : !user ? (
+        <Route><LoginPage /></Route>
+      ) : (
+        <>
+          <Route path="/" component={Scanner} />
+          <Route path="/decks" component={Decks} />
+          <Route path="/deck/:id" component={DeckDetail} />
+          <Route component={NotFound} />
+        </>
+      )}
     </Switch>
   );
 }

@@ -286,3 +286,19 @@
     inset: -1px;
   }
 }
+
+/* ── Combo wiggle animation ────────────────────────────────────────────────── */
+/* CSS animations auto-synchronize across all elements using the same keyframes,
+   so every card with .combo-wiggle wiggles in perfect sync. */
+@keyframes combo-wiggle {
+  0%   { transform: rotate(-1.5deg); }
+  25%  { transform: rotate(1.5deg);  }
+  50%  { transform: rotate(-1.5deg); }
+  75%  { transform: rotate(1.5deg);  }
+  100% { transform: rotate(-1.5deg); }
+}
+
+.combo-wiggle {
+  animation: combo-wiggle 0.39s ease-in-out infinite;
+}
+

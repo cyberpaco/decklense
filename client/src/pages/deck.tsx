@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -6,9 +6,8 @@ import {
   Minus, Plus, Trash2, ArrowLeft, Layers, CreditCard,
   Edit2, Check, X, Scan, TrendingUp, DollarSign,
   BarChart2, Swords, Landmark, Info, Download, ChevronDown,
-  ArrowUpDown, Upload, Loader2,
+  ArrowUpDown, Upload, Loader2, Share2, Undo2,
 } from "lucide-react";
-import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1012,17 +1011,44 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
   const [imgErr, setImgErr] = useState(false);
   const price = card.priceUsd ? `$${parseFloat(card.priceUsd).toFixed(2)}` : null;
   const colors = (card.colors ?? []).filter(c => WUBRG.includes(c));
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didLongPress = useRef(false);
+
+  const handlePointerDown = useCallback(() => {
+    if (isComboMode) return;
+    didLongPress.current = false;
+    longPressTimer.current = setTimeout(() => {
+      didLongPress.current = true;
+      if (onComboStart) onComboStart();
+    }, 500);
+  }, [isComboMode, onComboStart]);
+
+  const handlePointerUp = useCallback(() => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  }, []);
+
+  const handleClick = useCallback(() => {
+    if (didLongPress.current) { didLongPress.current = false; return; }
+    if (isComboMode && onComboToggle) onComboToggle();
+  }, [isComboMode, onComboToggle]);
+
+  // Synchronized wiggle: use CSS animation with a global class so all wiggling cards
+  // share the same animation timeline (CSS animations auto-sync when using the same @keyframes).
+  const wiggleClass = isComboMode && comboSelected ? "combo-wiggle" : "";
 
   return (
-    <motion.div
-      {...(isComboMode && comboSelected ? { animate: { rotate: [-1.5, 1.5, -1.5, 1.5, -1.5] }, transition: { repeat: Infinity, duration: 0.3 } } : {})}
-      onDoubleClick={() => { if (!isComboMode && onComboStart) onComboStart(); }}
-      onClick={() => { if (isComboMode && onComboToggle) onComboToggle(); }}
-      className={`group relative bg-card border rounded-xl overflow-visible hover-elevate ${RARITY_RING[card.rarity ?? ""] ?? "border-border"} ${isComboMode && comboSelected ? "ring-4 ring-primary" : ""}`}
+    <div
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onClick={handleClick}
+      className={`group relative bg-card border rounded-xl overflow-visible hover-elevate ${RARITY_RING[card.rarity ?? ""] ?? "border-border"} ${isComboMode && comboSelected ? "ring-4 ring-primary" : ""} ${wiggleClass}`}
+      style={{ transformOrigin: "center center" }}
       data-testid={`card-item-${card.id}`}>
       <div className="relative aspect-[5/7] rounded-t-xl overflow-hidden bg-muted">
         {card.imageUri && !imgErr ? (
           <img src={card.imageUri} alt={card.cardName ?? "Card"} className="w-full h-full object-cover"
+            draggable={false}
             onError={() => setImgErr(true)} />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -1034,15 +1060,17 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
             {card.quantity}
           </div>
         )}
-        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-1 pb-2">
-          <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={onDecrease}
-            data-testid={`button-decrease-${card.id}`}><Minus className="w-3 h-3" /></Button>
-          <span className="text-white font-bold text-sm w-5 text-center">{card.quantity}</span>
-          <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={onIncrease}
-            data-testid={`button-increase-${card.id}`}><Plus className="w-3 h-3" /></Button>
-          <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90 ml-1" onClick={onDelete}
-            data-testid={`button-delete-card-${card.id}`}><Trash2 className="w-3 h-3 text-destructive" /></Button>
-        </div>
+        {!isComboMode && (
+          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-1 pb-2">
+            <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={e => { e.stopPropagation(); onDecrease(); }}
+              data-testid={`button-decrease-${card.id}`}><Minus className="w-3 h-3" /></Button>
+            <span className="text-white font-bold text-sm w-5 text-center">{card.quantity}</span>
+            <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90" onClick={e => { e.stopPropagation(); onIncrease(); }}
+              data-testid={`button-increase-${card.id}`}><Plus className="w-3 h-3" /></Button>
+            <Button size="icon" variant="secondary" className="h-7 w-7 bg-background/90 ml-1" onClick={e => { e.stopPropagation(); onDelete(); }}
+              data-testid={`button-delete-card-${card.id}`}><Trash2 className="w-3 h-3 text-destructive" /></Button>
+          </div>
+        )}
       </div>
       <div className="px-2 py-1.5">
         <p className="text-xs font-semibold text-foreground truncate">{card.cardName ?? "Unknown"}</p>
@@ -1058,7 +1086,7 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -1162,6 +1190,62 @@ export default function DeckDetail() {
     }
   });
 
+  // Deleted cards stack for undo
+  const [deletedStack, setDeletedStack] = useState<DeckCard[]>([]);
+
+  const restoreCard = useMutation({
+    mutationFn: async (card: DeckCard) => {
+      await apiRequest("POST", `/api/decks/${id}/cards`, {
+        setCode: card.setCode,
+        collectorNumber: card.collectorNumber,
+        cardName: card.cardName,
+        typeLine: card.typeLine,
+        manaCost: card.manaCost,
+        cmc: card.cmc,
+        rarity: card.rarity,
+        imageUri: card.imageUri,
+        scryfallId: card.scryfallId,
+        colors: card.colors,
+        priceUsd: card.priceUsd,
+        combo: card.combo,
+        quantity: card.quantity,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/decks", id, "cards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      toast({ description: "Card restored" });
+    },
+  });
+
+  const handleShare = useCallback(async () => {
+    try {
+      const res = await apiRequest("POST", `/api/decks/${id}/share`);
+      const { shareToken } = await res.json();
+      const shareUrl = `${window.location.origin}/shared/${shareToken}`;
+      if (navigator.share) {
+        await navigator.share({
+          title: `DeckLens — ${deck?.name ?? "Deck"}`,
+          text: `Check out my MTG deck "${deck?.name}"!`,
+          url: shareUrl,
+        });
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        toast({ description: "Share link copied to clipboard!" });
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        toast({ description: "Failed to share deck" });
+      }
+    }
+  }, [id, deck?.name, toast]);
+
+  // Wrap deleteCard to push to deleted stack
+  const handleDeleteCard = useCallback((card: DeckCard) => {
+    setDeletedStack(prev => [...prev, card]);
+    deleteCard.mutate(card.id);
+  }, [deleteCard]);
+
   if (!id) return null;
 
   // Build grouped card list (only show group headers for type/subtype/color/cmc sorts)
@@ -1225,14 +1309,11 @@ export default function DeckDetail() {
                 )}
                 <p className="text-xs text-muted-foreground mt-0.5" data-testid="text-card-count">
                   {totalCards} card{totalCards !== 1 ? "s" : ""}
-                  {analytics && analytics.totalValue > 0 && (
-                    <span className="ml-2 text-green-500 font-medium">· ${analytics.totalValue.toFixed(2)}</span>
-                  )}
                 </p>
               </div>
             )}
 
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               <Button size="sm" variant="outline"
                 onClick={() => setShowImport(true)}
                 data-testid="button-import-deck"
@@ -1247,6 +1328,15 @@ export default function DeckDetail() {
                   className="gap-1.5">
                   <Download className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Export</span>
+                </Button>
+              )}
+              {cards && cards.length > 0 && (
+                <Button size="sm" variant="outline"
+                  onClick={handleShare}
+                  data-testid="button-share-deck"
+                  className="gap-1.5">
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Share</span>
                 </Button>
               )}
               <Link href="/">
@@ -1286,9 +1376,21 @@ export default function DeckDetail() {
             </div>
           ) : (
             <>
-              {/* Sort bar */}
-              <div className="mb-3">
+              {/* Sort bar + restore trash */}
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <SortBar sortBy={sortBy} onChange={setSortBy} />
+                {deletedStack.length > 0 && (
+                  <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0"
+                    onClick={() => {
+                      const last = deletedStack[deletedStack.length - 1];
+                      setDeletedStack(prev => prev.slice(0, -1));
+                      restoreCard.mutate(last);
+                    }}
+                    data-testid="button-restore-card">
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Undo</span>
+                  </Button>
+                )}
               </div>
 
               {/* Grouped or flat grid */}
@@ -1319,7 +1421,7 @@ export default function DeckDetail() {
                               if (card.quantity <= 1) deleteCard.mutate(card.id);
                               else updateQty.mutate({ cardId: card.id, quantity: card.quantity - 1 });
                             }}
-                            onDelete={() => deleteCard.mutate(card.id)} />
+                            onDelete={() => handleDeleteCard(card)} />
                         ))}
                       </div>
                     </div>
@@ -1343,7 +1445,7 @@ export default function DeckDetail() {
                         if (card.quantity <= 1) deleteCard.mutate(card.id);
                         else updateQty.mutate({ cardId: card.id, quantity: card.quantity - 1 });
                       }}
-                      onDelete={() => deleteCard.mutate(card.id)} />
+                      onDelete={() => handleDeleteCard(card)} />
                   ))}
                 </div>
               )}
@@ -1374,8 +1476,8 @@ export default function DeckDetail() {
       <AnimatePresence>
         {markingCombo && (
           <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur-md shadow-2xl border border-primary/20 px-5 py-3 rounded-full flex items-center gap-4">
-            <p className="text-sm font-semibold whitespace-nowrap">{comboCards.length} cards selected</p>
+            className="fixed bottom-6 left-0 right-0 mx-4 sm:mx-auto sm:max-w-md z-50 bg-background/95 backdrop-blur-md shadow-2xl border border-primary/20 px-4 py-3 rounded-2xl flex items-center justify-center gap-3 flex-wrap">
+            <p className="text-sm font-semibold">{comboCards.length} card{comboCards.length !== 1 ? "s" : ""} selected</p>
             <Button size="sm" onClick={() => setComboNameModalOpen(true)} disabled={comboCards.length === 0}>
               Save Combo
             </Button>

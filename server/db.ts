@@ -52,6 +52,9 @@ export async function ensureTables() {
 
       -- Add combo column if it doesn't exist (safe migration)
       ALTER TABLE "deck_cards" ADD COLUMN IF NOT EXISTS "combo" TEXT;
+
+      -- Add share_token column if it doesn't exist (safe migration)
+      ALTER TABLE "decks" ADD COLUMN IF NOT EXISTS "share_token" VARCHAR(36);
     `);
     console.log("Database tables ensured.");
   } catch (err) {

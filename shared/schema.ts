@@ -7,6 +7,7 @@ export const decks = pgTable("decks", {
   userId: varchar("user_id", { length: 255 }).notNull(),
   name: text("name").notNull(),
   description: text("description"),
+  shareToken: varchar("share_token", { length: 36 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

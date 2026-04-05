@@ -316,5 +316,28 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  // ── Share ──────────────────────────────────────────────────────────────────
+
+  // Generate or get share token for a deck
+  app.post("/api/decks/:id/share", isAuthenticated, async (req: any, res) => {
+    const deck = await storage.getDeck(req.params.id, userId(req));
+    if (!deck) return res.status(404).json({ error: "Deck not found" });
+    let token = deck.shareToken;
+    if (!token) {
+      token = randomUUID();
+      await storage.updateDeck(req.params.id, userId(req), { shareToken: token } as any);
+    }
+    res.json({ shareToken: token });
+  });
+
+  // Public: get shared deck info (no auth required)
+  app.get("/api/shared/:token", async (req: any, res) => {
+    const deck = await storage.getDeckByShareToken(req.params.token);
+    if (!deck) return res.status(404).json({ error: "Shared deck not found" });
+    const cards = await storage.getDeckCards(deck.id);
+    const cardCount = cards.reduce((s: number, c: any) => s + c.quantity, 0);
+    res.json({ deck, cards, cardCount });
+  });
+
   return httpServer;
 }

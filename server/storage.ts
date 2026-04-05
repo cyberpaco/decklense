@@ -7,6 +7,7 @@ import type { Deck, InsertDeck, DeckCard, InsertDeckCard } from "@shared/schema"
 export interface IStorage {
   getDecks(userId: string): Promise<Deck[]>;
   getDeck(id: string, userId: string): Promise<Deck | undefined>;
+  getDeckByShareToken(token: string): Promise<Deck | undefined>;
   createDeck(deck: InsertDeck): Promise<Deck>;
   updateDeck(id: string, userId: string, updates: Partial<InsertDeck>): Promise<Deck | undefined>;
   deleteDeck(id: string, userId: string): Promise<boolean>;
@@ -26,6 +27,12 @@ class DrizzleStorage implements IStorage {
   async getDeck(id: string, userId: string): Promise<Deck | undefined> {
     const [deck] = await db.select().from(decks)
       .where(and(eq(decks.id, id), eq(decks.userId, userId)));
+    return deck;
+  }
+
+  async getDeckByShareToken(token: string): Promise<Deck | undefined> {
+    const [deck] = await db.select().from(decks)
+      .where(eq(decks.shareToken, token));
     return deck;
   }
 
