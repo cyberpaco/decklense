@@ -6,7 +6,7 @@ import {
   Minus, Plus, Trash2, ArrowLeft, Layers, CreditCard,
   Edit2, Check, X, Scan, TrendingUp, DollarSign,
   BarChart2, Swords, Landmark, Info, Download, ChevronDown,
-  ArrowUpDown, Upload, Loader2, Share2, Undo2,
+  ArrowUpDown, Upload, Loader2, Share2, Undo2, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1097,6 +1097,70 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
   );
 }
 
+// ── Combo Naming Drawer ────────────────────────────────────────────────────────
+function ComboDrawer({
+  selectedCount,
+  onSave,
+  onClose,
+  isPending
+}: {
+  selectedCount: number;
+  onSave: (name: string) => void;
+  onClose: () => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <motion.div className="fixed inset-x-0 bottom-0 z-[70]"
+      initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+      transition={{ type: "spring", damping: 28, stiffness: 320 }}>
+      {/* Background overlay */}
+      <div className="absolute inset-0 -top-screen pointer-events-none" />
+      <div className="bg-background/97 backdrop-blur-2xl rounded-t-3xl shadow-2xl border-t border-border/50"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)" }}>
+        
+        <div className="w-full flex items-center justify-center py-4">
+          <div className="w-10 h-1.5 bg-muted-foreground/30 rounded-full" />
+        </div>
+
+        <div className="px-5 pb-2">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-foreground">Name Combo</h3>
+            <p className="text-sm text-muted-foreground">
+              Tag these <span className="text-primary font-bold">{selectedCount}</span> cards as a unique combo.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <Input
+              autoFocus
+              placeholder="e.g. Infinite Mana, Twin-Combo"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="h-12 bg-muted/40 border-none rounded-xl text-base"
+              onKeyDown={e => {
+                if (e.key === "Enter" && name.trim() && !isPending) onSave(name);
+              }}
+            />
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={onClose} disabled={isPending}>
+                <X className="w-4 h-4 mr-1.5" />Cancel
+              </Button>
+              <Button className="flex-1 h-12 rounded-xl" 
+                onClick={() => onSave(name)} 
+                disabled={!name.trim() || isPending}>
+                {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Check className="w-4 h-4 mr-1.5" />}
+                Save Combo
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 // ── Group label for sorted views ──────────────────────────────────────────────
 
 function getGroupLabel(card: DeckCard, by: SortBy): string {
@@ -1134,6 +1198,7 @@ export default function DeckDetail() {
   const [comboNameModalOpen, setComboNameModalOpen] = useState<boolean>(false);
   const [comboName, setComboName] = useState<string>("");
   const [fullscreenCard, setFullscreenCard] = useState<DeckCard | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: deck, isLoading: deckLoading } = useQuery<Deck>({
     queryKey: ["/api/decks", id],
@@ -1157,7 +1222,15 @@ export default function DeckDetail() {
 
   const analytics  = useAnalytics(cards);
   const totalCards = cards?.reduce((s, c) => s + c.quantity, 0) ?? 0;
-  const sortedCards = useMemo(() => sortCards(cards ?? [], sortBy), [cards, sortBy]);
+  
+  const sortedCards = useMemo(() => {
+    let sorted = sortCards(cards ?? [], sortBy);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      sorted = sorted.filter(c => (c.cardName ?? "").toLowerCase().includes(q));
+    }
+    return sorted;
+  }, [cards, sortBy, searchQuery]);
 
   const updateName = useMutation({
     mutationFn: (name: string) => apiRequest("PATCH", `/api/decks/${id}`, { name }),
@@ -1384,21 +1457,42 @@ export default function DeckDetail() {
             </div>
           ) : (
             <>
-              {/* Sort bar + restore trash */}
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <SortBar sortBy={sortBy} onChange={setSortBy} />
-                {deletedStack.length > 0 && (
-                  <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0"
-                    onClick={() => {
-                      const last = deletedStack[deletedStack.length - 1];
-                      setDeletedStack(prev => prev.slice(0, -1));
-                      restoreCard.mutate(last);
-                    }}
-                    data-testid="button-restore-card">
-                    <Undo2 className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Undo</span>
-                  </Button>
-                )}
+              {/* Search, Sort, and Recycle Bin */}
+              <div className="mb-4 flex flex-col sm:flex-row items-center gap-3">
+                <div className="relative flex-1 w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search cards..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="pl-9 h-10 bg-muted/40 border-none rounded-xl"
+                    list="deck-card-names"
+                  />
+                  <datalist id="deck-card-names">
+                    {Array.from(new Set(cards?.map(c => c.cardName).filter(Boolean))).map(name => (
+                      <option key={name} value={name!} />
+                    ))}
+                  </datalist>
+                </div>
+                
+                <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar">
+                  <SortBar sortBy={sortBy} onChange={setSortBy} />
+                  
+                  {deletedStack.length > 0 && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl"
+                      onClick={() => {
+                        const last = deletedStack[deletedStack.length - 1];
+                        setDeletedStack(prev => prev.slice(0, -1));
+                        restoreCard.mutate(last);
+                      }}
+                      data-testid="button-restore-card">
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* Grouped or flat grid */}
@@ -1541,23 +1635,20 @@ export default function DeckDetail() {
         )}
       </AnimatePresence>
 
-      <Dialog open={comboNameModalOpen} onOpenChange={setComboNameModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Name Combo</DialogTitle>
-            <DialogDescription>Enter a name for the selected combo.</DialogDescription>
-          </DialogHeader>
-          <div className="py-2">
-            <Input autoFocus value={comboName} onChange={e => setComboName(e.target.value)} placeholder="e.g. Infinite Mana" />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setComboNameModalOpen(false)}>Cancel</Button>
-            <Button onClick={() => updateCombo.mutate({ combo: comboName, cardIds: comboCards })} disabled={!comboName.trim() || updateCombo.isPending}>
-              {updateCombo.isPending ? "Saving..." : "Save Combo"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AnimatePresence>
+        {comboNameModalOpen && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[65]" onClick={() => setComboNameModalOpen(false)} />
+            <ComboDrawer
+              selectedCount={comboCards.length}
+              onClose={() => setComboNameModalOpen(false)}
+              onSave={name => updateCombo.mutate({ combo: name, cardIds: comboCards })}
+              isPending={updateCombo.isPending}
+            />
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
