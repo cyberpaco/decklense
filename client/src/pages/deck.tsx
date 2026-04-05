@@ -1047,10 +1047,14 @@ function CardTile({ card, onIncrease, onDecrease, onDelete, isComboMode, comboSe
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onContextMenu={(e) => {
+        // Prevent default context menu/text selection popup on long press
+        e.preventDefault();
+      }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      className={`group relative bg-card border rounded-xl overflow-visible hover-elevate ${RARITY_RING[card.rarity ?? ""] ?? "border-border"} ${isComboMode && comboSelected ? "ring-4 ring-primary" : ""} ${wiggleClass}`}
-      style={{ transformOrigin: "center center" }}
+      className={`group relative bg-card border rounded-xl overflow-visible hover-elevate select-none ${RARITY_RING[card.rarity ?? ""] ?? "border-border"} ${isComboMode && comboSelected ? "ring-4 ring-primary" : ""} ${wiggleClass}`}
+      style={{ transformOrigin: "center center", WebkitTouchCallout: "none" }}
       data-testid={`card-item-${card.id}`}>
       <div className="relative aspect-[5/7] rounded-t-xl overflow-hidden bg-muted">
         {card.imageUri && !imgErr ? (
@@ -1297,6 +1301,7 @@ export default function DeckDetail() {
   const [comboName, setComboName] = useState<string>("");
   const [fullscreenCard, setFullscreenCard] = useState<DeckCard | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
 
   const { data: deck, isLoading: deckLoading } = useQuery<Deck>({
     queryKey: ["/api/decks", id],
@@ -1557,26 +1562,22 @@ export default function DeckDetail() {
           ) : (
             <>
               {/* Search, Sort, and Recycle Bin */}
-              <div className="mb-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="relative flex-1 w-full max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search cards..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="pl-9 h-10 bg-muted/40 border-none rounded-xl w-full"
-                    list="deck-card-names"
-                  />
-                  <datalist id="deck-card-names">
-                    {Array.from(new Set(cards?.map(c => c.cardName).filter(Boolean))).map(name => (
-                      <option key={name} value={name!} />
-                    ))}
-                  </datalist>
-                </div>
-                
-                <div className="flex items-center gap-2 w-full sm:w-auto self-end sm:self-auto justify-between sm:justify-start">
+              <div className="mb-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
                   <SortBar sortBy={sortBy} onChange={setSortBy} />
                   
+                  <Button
+                    size="icon"
+                    variant={showSearch ? "secondary" : "outline"}
+                    className="h-10 w-10 flex-shrink-0 bg-muted/40 border-none rounded-xl"
+                    onClick={() => {
+                      setShowSearch(!showSearch);
+                      if (showSearch) setSearchQuery(""); // clear on close
+                    }}
+                    data-testid="button-toggle-search">
+                    <Search className="w-4 h-4 text-muted-foreground" />
+                  </Button>
+
                   <Button
                     size="icon"
                     variant="outline"
@@ -1591,6 +1592,25 @@ export default function DeckDetail() {
                     )}
                   </Button>
                 </div>
+
+                {showSearch && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="relative w-full max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      autoFocus
+                      placeholder="Search cards..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="pl-9 h-10 bg-muted/40 border-none rounded-xl w-full"
+                      list="deck-card-names"
+                    />
+                    <datalist id="deck-card-names">
+                      {Array.from(new Set(cards?.map(c => c.cardName).filter(Boolean))).map(name => (
+                        <option key={name} value={name!} />
+                      ))}
+                    </datalist>
+                  </motion.div>
+                )}
               </div>
 
               {/* Grouped or flat grid */}
@@ -1619,8 +1639,7 @@ export default function DeckDetail() {
                             onFullscreen={() => setFullscreenCard(card)}
                             onIncrease={() => updateQty.mutate({ cardId: card.id, quantity: card.quantity + 1 })}
                             onDecrease={() => {
-                              if (card.quantity <= 1) deleteCard.mutate(card.id);
-                              else updateQty.mutate({ cardId: card.id, quantity: card.quantity - 1 });
+                              if (card.quantity > 1) updateQty.mutate({ cardId: card.id, quantity: card.quantity - 1 });
                             }}
                             onDelete={() => handleDeleteCard(card)} />
                         ))}
@@ -1644,8 +1663,7 @@ export default function DeckDetail() {
                       onFullscreen={() => setFullscreenCard(card)}
                       onIncrease={() => updateQty.mutate({ cardId: card.id, quantity: card.quantity + 1 })}
                       onDecrease={() => {
-                        if (card.quantity <= 1) deleteCard.mutate(card.id);
-                        else updateQty.mutate({ cardId: card.id, quantity: card.quantity - 1 });
+                        if (card.quantity > 1) updateQty.mutate({ cardId: card.id, quantity: card.quantity - 1 });
                       }}
                       onDelete={() => handleDeleteCard(card)} />
                   ))}
