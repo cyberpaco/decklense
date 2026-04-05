@@ -49,6 +49,9 @@ export async function ensureTables() {
         "colors" TEXT[],
         "price_usd" TEXT
       );
+
+      -- Add combo column if it doesn't exist (safe migration)
+      ALTER TABLE "deck_cards" ADD COLUMN IF NOT EXISTS "combo" TEXT;
     `);
     console.log("Database tables ensured.");
   } catch (err) {

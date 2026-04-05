@@ -1102,7 +1102,7 @@ export default function DeckDetail() {
   const { data: deck, isLoading: deckLoading } = useQuery<Deck>({
     queryKey: ["/api/decks", id],
     queryFn: async () => {
-      const r = await fetch(`/api/decks/${id}`);
+      const r = await fetch(`/api/decks/${id}`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
@@ -1111,7 +1111,7 @@ export default function DeckDetail() {
   const { data: cards, isLoading: cardsLoading } = useQuery<DeckCard[]>({
     queryKey: ["/api/decks", id, "cards"],
     queryFn: async () => {
-      const r = await fetch(`/api/decks/${id}/cards`);
+      const r = await fetch(`/api/decks/${id}/cards`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       const data = await r.json();
       return Array.isArray(data) ? data : [];

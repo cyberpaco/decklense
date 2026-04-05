@@ -19,7 +19,7 @@ function DeckCard({ deck, onDelete }: { deck: DeckWithCount; onDelete: () => voi
   const { data: cards } = useQuery<DeckCard[]>({
     queryKey: ["/api/decks", deck.id, "cards"],
     queryFn: async () => {
-      const r = await fetch(`/api/decks/${deck.id}/cards`);
+      const r = await fetch(`/api/decks/${deck.id}/cards`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
@@ -100,7 +100,7 @@ export default function Decks() {
   const { data: decks, isLoading } = useQuery<DeckWithCount[]>({
     queryKey: ["/api/decks"],
     queryFn: async () => {
-      const r = await fetch("/api/decks");
+      const r = await fetch("/api/decks", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       const data = await r.json();
       return Array.isArray(data) ? data : [];
